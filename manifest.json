@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "A股行业板块",
+  "description": "实时查看A股分行业涨跌情况，数据来自东方财富",
+  "version": "1.0.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "A股行业板块"
+  },
+  "host_permissions": [
+    "https://push2.eastmoney.com/*",
+    "https://push2his.eastmoney.com/*",
+    "https://fundsuggest.eastmoney.com/*",
+    "https://fundmobapi.eastmoney.com/*",
+    "https://fund.eastmoney.com/*"
+  ]
+}

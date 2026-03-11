@@ -1,0 +1,438 @@
+// ── 全球指数 ──
+const INDICES = [
+  { secid: '1.000001',   name: '上证' },
+  { secid: '1.000688',   name: '科创50' },
+  { secid: '124.HSTECH', name: '恒生科技' },
+  { secid: '100.NDX',    name: '纳指' },
+  { secid: '100.N225',   name: '日经' },
+  { secid: '100.KS11',   name: '韩国' },
+];
+
+async function fetchIndices() {
+  const bar = document.getElementById('indices-bar');
+  try {
+    const secids = INDICES.map(i => i.secid).join(',');
+    const res = await fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f3&secids=${secids}&_=${Date.now()}`);
+    const json = await res.json();
+    const map = {};
+    (json?.data?.diff || []).forEach(d => { map[d.f12] = Number(d.f3); });
+    bar.innerHTML = INDICES.map(idx => {
+      const code = idx.secid.split('.')[1];
+      const chg = map[code];
+      const cls = (chg == null || isNaN(chg)) ? 'flat' : chg > 0 ? 'up' : chg < 0 ? 'down' : 'flat';
+      const txt = (chg == null || isNaN(chg)) ? '—' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
+      return `<div class="idx-item"><span class="idx-name">${idx.name}</span><span class="idx-chg ${cls}">${txt}</span></div>`;
+    }).join('');
+  } catch {
+    bar.innerHTML = '';
+  }
+}
+
+const CUSTOM_SECTORS = {
+  BK0547: '黄金',
+  BK1128: 'CPO',
+  BK0578: '稀土永磁',
+  BK1206: '化工',
+  BK0457: '电网设备',
+  BK1184: '机器人',
+  BK0963: '商业航天',
+  BK0800: '人工智能',
+  BK1629: 'AI应用',
+  BK1036: '半导体',
+  BK1031: '光伏',
+  BK1277: '白酒',
+  BK1106: '创新药',
+  BK0478: '有色金属',
+  BK0493: '新能源',
+  BK1204: '军工',
+  BK0486: '传媒',
+  BK1046: '游戏',
+  BK1163: '可控核聚变',
+  BK1041: '医疗',
+  BK1173: '锂矿',
+  BK1216: '医药',
+  BK0433: '农林牧渔',
+  BK1033: '电池',
+  BK0437: '煤炭',
+  BK0438: '食品饮料',
+  BK1213: '商贸零售',
+  BK0475: '银行',
+  BK0479: '钢铁',
+  BK1202: '房地产',
+  BK1210: '交通运输',
+  BK0653: '养老产业',
+};
+
+const SECIDS = Object.keys(CUSTOM_SECTORS).map(k => '90.' + k).join(',');
+const API_URL = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f3,f4,f6,f62,f8,f20&secids=${SECIDS}`;
+
+let sortCol = 'f3';
+let sortDir = 'desc';
+let rawData = [];
+const stockCache = {};
+const expandedSet = new Set();
+
+// ── 走势图 ──
+const CHART_RANGES = [
+  { label: '今日', type: 'intraday' },
+  { label: '1月',  type: 'hist', days: 35 },
+  { label: '3月',  type: 'hist', days: 95 },
+  { label: '半年', type: 'hist', days: 185 },
+  { label: '1年',  type: 'hist', days: 370 },
+];
+const chartCache = {};
+const chartExpandedSet = new Set();
+const chartRangeMap = {}; // bk -> range label
+
+function begDate(daysBack) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+async function fetchKline(bk, range) {
+  const key = `${bk}_${range.label}`;
+  if (chartCache[key]) return chartCache[key];
+  let data;
+  if (range.type === 'intraday') {
+    const url = `https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=90.${bk}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f53&iscr=0&iscca=0`;
+    const res = await fetch(url);
+    const json = await res.json();
+    data = (json?.data?.trends || []).map(k => {
+      const p = k.split(',');
+      return { date: p[0], close: parseFloat(p[1]) };
+    }).filter(d => !isNaN(d.close));
+  } else {
+    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=90.${bk}&fields1=f1&fields2=f51,f53&klt=101&fqt=1&beg=${begDate(range.days)}&end=20500101`;
+    const res = await fetch(url);
+    const json = await res.json();
+    data = (json?.data?.klines || []).map(k => {
+      const [date, close] = k.split(',');
+      return { date, close: parseFloat(close) };
+    });
+  }
+  chartCache[key] = data;
+  return data;
+}
+
+function renderChartSvg(bk, data, container) {
+  if (!data.length) { container.innerHTML = '<div class="chart-empty">暂无数据</div>'; return; }
+  const W = 492, H = 110, pt = 8, pb = 18, pl = 46, pr = 6;
+  const pw = W - pl - pr, ph = H - pt - pb;
+  const closes = data.map(d => d.close);
+  const minV = Math.min(...closes), maxV = Math.max(...closes);
+  const span = maxV - minV || minV * 0.001 || 1;
+  const cx = i => pl + (i / Math.max(data.length - 1, 1)) * pw;
+  const cy = v => pt + (1 - (v - minV) / span) * ph;
+  const isUp = closes[closes.length - 1] >= closes[0];
+  const color = isUp ? '#f04040' : '#18cc70';
+  const gid = `cg_${bk}`;
+  const pts = data.map((d, i) => `${cx(i).toFixed(1)},${cy(d.close).toFixed(1)}`);
+  const line = `M ${pts.join(' L ')}`;
+  const area = `M ${cx(0).toFixed(1)},${(pt+ph).toFixed(1)} L ${pts.join(' L ')} L ${cx(data.length-1).toFixed(1)},${(pt+ph).toFixed(1)} Z`;
+  const refY = cy(closes[0]).toFixed(1);
+  const n = data.length;
+
+  const fmtP = v => v >= 10000 ? (v/10000).toFixed(2)+'w' : v >= 1000 ? v.toFixed(0) : v >= 100 ? v.toFixed(1) : v.toFixed(2);
+
+  // 水平网格线 + 右侧价格标签（4条，均分）
+  const hGrids = [0, 0.25, 0.5, 0.75, 1].map(t => {
+    const y = (pt + t * ph).toFixed(1);
+    const price = maxV - t * span;
+    const labelY = t === 0 ? parseFloat(y) + 9 : t === 1 ? parseFloat(y) - 2 : parseFloat(y) + 3.5;
+    return `<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="#1c2030" stroke-width="1"/>
+<text x="${pl-4}" y="${labelY.toFixed(1)}" text-anchor="end" fill="#555" font-size="9" font-family="monospace">${fmtP(price)}</text>`;
+  }).join('');
+
+  // 垂直网格线 + 下方日期标签（对齐实际数据点）
+  const vIdxs = n <= 2 ? [0, n-1] : [0, Math.floor(n/4), Math.floor(n/2), Math.floor(n*3/4), n-1];
+  const vGrids = vIdxs.map((i, idx) => {
+    const x = cx(i).toFixed(1);
+    const anchor = idx === 0 ? 'start' : idx === vIdxs.length-1 ? 'end' : 'middle';
+    const dateStr = data[i].date.length > 5 ? data[i].date.slice(5) : data[i].date;
+    return `<line x1="${x}" y1="${pt}" x2="${x}" y2="${pt+ph}" stroke="#1c2030" stroke-width="1"/>
+<text x="${x}" y="${H-3}" text-anchor="${anchor}" fill="#555" font-size="9" font-family="monospace">${dateStr}</text>`;
+  }).join('');
+
+  container.innerHTML = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0.03"/>
+    </linearGradient></defs>
+    ${hGrids}${vGrids}
+    <line x1="${pl}" y1="${refY}" x2="${W-pr}" y2="${refY}" stroke="#2e3650" stroke-width="1" stroke-dasharray="4,3"/>
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function updateChgEl(chgEl, data, isIntraday) {
+  if (data.length < 2) { chgEl.textContent = ''; return; }
+  const pct = (data[data.length-1].close - data[0].close) / data[0].close * 100;
+  chgEl.className = `chart-period-chg ${pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'}`;
+  chgEl.textContent = (isIntraday ? '今日 ' : '') + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+}
+
+async function loadChart(bk, range, svgWrap, chgEl) {
+  svgWrap.innerHTML = '<div class="chart-empty">加载中…</div>';
+  try {
+    const data = await fetchKline(bk, range);
+    updateChgEl(chgEl, data, range.type === 'intraday');
+    renderChartSvg(bk, data, svgWrap);
+  } catch {
+    svgWrap.innerHTML = '<div class="chart-empty error">加载失败</div>';
+  }
+}
+
+function bindChartPanel(bk, panel) {
+  panel.querySelectorAll('.crb').forEach(rb => {
+    rb.addEventListener('click', async () => {
+      panel.querySelectorAll('.crb').forEach(b => b.classList.remove('active'));
+      rb.classList.add('active');
+      const rangeLabel = rb.dataset.range;
+      const range = CHART_RANGES.find(r => r.label === rangeLabel);
+      chartRangeMap[bk] = rangeLabel;
+      await loadChart(bk, range, panel.querySelector('.chart-svg-wrap'), panel.querySelector('.chart-period-chg'));
+    });
+  });
+}
+
+async function toggleChart(bk, btn) {
+  const panel = document.getElementById(`chart-${bk}`);
+  if (!panel) return;
+  if (chartExpandedSet.has(bk)) {
+    chartExpandedSet.delete(bk);
+    panel.style.display = 'none';
+    btn.classList.remove('active');
+    return;
+  }
+  chartExpandedSet.add(bk);
+  btn.classList.add('active');
+  panel.style.display = 'block';
+  bindChartPanel(bk, panel);
+  const rangeLabel = chartRangeMap[bk] || CHART_RANGES[0].label;
+  const range = CHART_RANGES.find(r => r.label === rangeLabel) || CHART_RANGES[0];
+  await loadChart(bk, range, panel.querySelector('.chart-svg-wrap'), panel.querySelector('.chart-period-chg'));
+}
+
+function fmt(val, digits = 2) {
+  if (val === undefined || val === null || val === '-') return '—';
+  return Number(val).toFixed(digits);
+}
+
+function fmtAmount(val) {
+  if (!val || val === '-') return '—';
+  const n = Number(val);
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+  if (n >= 1e4) return (n / 1e4).toFixed(2) + '万';
+  return n.toFixed(0);
+}
+
+function fmtFlow(val) {
+  if (!val || val === '-') return '—';
+  const n = Number(val);
+  const abs = Math.abs(n);
+  const sign = n >= 0 ? '+' : '-';
+  if (abs >= 1e8) return sign + (abs / 1e8).toFixed(2) + '亿';
+  if (abs >= 1e4) return sign + (abs / 1e4).toFixed(2) + '万';
+  return sign + abs.toFixed(0);
+}
+
+async function fetchStocks(bk) {
+  if (stockCache[bk]) return stockCache[bk];
+  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=b:${bk}+f:!50&fields=f2,f3,f12,f13,f14&_=${Date.now()}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  const stocks = json?.data?.diff || [];
+  stockCache[bk] = stocks;
+  return stocks;
+}
+
+function renderStockPanel(bk, stocks) {
+  const panel = document.getElementById(`stocks-${bk}`);
+  if (!panel) return;
+
+  if (!stocks.length) {
+    panel.innerHTML = '<div class="stock-empty">暂无数据</div>';
+    return;
+  }
+
+  panel.innerHTML = stocks.map(s => {
+    const chg = Number(s.f3);
+    const isUp = chg > 0;
+    const cls = isNaN(chg) || chg === 0 ? 'flat' : isUp ? 'up' : 'down';
+    const chgText = isNaN(chg) ? '—' : (isUp ? '+' : '') + chg.toFixed(2) + '%';
+    const price = s.f2 !== undefined ? Number(s.f2).toFixed(2) : '—';
+    const code = s.f12 || '';
+    let exchange, exCls;
+    if (s.f13 === 1) {
+      exchange = code.startsWith('688') ? '科创' : '沪';
+      exCls = code.startsWith('688') ? 'ex-star' : 'ex-sh';
+    } else if (s.f13 === 0) {
+      exchange = code.startsWith('30') ? '创业' : '深';
+      exCls = code.startsWith('30') ? 'ex-cy' : 'ex-sz';
+    } else {
+      exchange = '北';
+      exCls = 'ex-bj';
+    }
+    return `
+      <div class="stock-row">
+        <span class="stock-exchange ${exCls}">${exchange}</span>
+        <span class="stock-code">${code || '—'}</span>
+        <span class="stock-name">${s.f14 || '—'}</span>
+        <span class="stock-price">${price}</span>
+        <span class="stock-chg ${cls}">${chgText}</span>
+      </div>`;
+  }).join('');
+}
+
+async function toggleStocks(bk, btn) {
+  const panel = document.getElementById(`stocks-${bk}`);
+  if (!panel) return;
+
+  if (expandedSet.has(bk)) {
+    expandedSet.delete(bk);
+    panel.style.display = 'none';
+    btn.classList.remove('expanded');
+    return;
+  }
+
+  expandedSet.add(bk);
+  btn.classList.add('expanded');
+  panel.style.display = 'block';
+
+  if (!stockCache[bk]) {
+    panel.innerHTML = '<div class="stock-empty">加载中…</div>';
+    try {
+      const stocks = await fetchStocks(bk);
+      renderStockPanel(bk, stocks);
+    } catch {
+      panel.innerHTML = '<div class="stock-empty error">加载失败</div>';
+    }
+  } else {
+    renderStockPanel(bk, stockCache[bk]);
+  }
+}
+
+async function fetchData() {
+  const list = document.getElementById('list');
+  if (!rawData.length) list.innerHTML = '<div class="loading">加载中…</div>';
+  try {
+    const res = await fetch(API_URL + '&_=' + Date.now());
+    const json = await res.json();
+    const all = json?.data?.diff || [];
+    rawData = all.map(d => ({ ...d, f14: CUSTOM_SECTORS[d.f12] || d.f14 }));
+    render();
+    document.getElementById('update-time').textContent =
+      new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (e) {
+    list.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
+  }
+}
+
+function render() {
+  const data = [...rawData].sort((a, b) => {
+    const va = Number(a[sortCol]) || 0;
+    const vb = Number(b[sortCol]) || 0;
+    return sortDir === 'desc' ? vb - va : va - vb;
+  });
+
+  const maxAbs = Math.max(...data.map(d => Math.abs(Number(d.f3) || 0)), 1);
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+
+  data.forEach((d, i) => {
+    const bk = d.f12;
+    const chg = Number(d.f3);
+    const isUp = chg > 0;
+    const isFlat = chg === 0 || isNaN(chg);
+    const cls = isFlat ? 'flat' : isUp ? 'up' : 'down';
+    const chgText = isNaN(chg) ? '—' : (isUp ? '+' : '') + fmt(chg) + '%';
+    const barW = isFlat ? 0 : Math.round((Math.abs(chg) / maxAbs) * 100);
+    const flow = Number(d.f62);
+    const flowCls = isNaN(flow) ? '' : flow > 0 ? 'flow-up' : 'flow-down';
+    const isExpanded = expandedSet.has(bk);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'row-wrap';
+    wrap.innerHTML = `
+      <div class="row">
+        <span class="col-rank">${i + 1}</span>
+        <span class="col-name">${d.f14 || '—'}</span>
+        <span class="col-chg ${cls}">
+          <span class="chg-text">${chgText}</span>
+          <span class="bar-wrap"><span class="bar ${cls}" style="width:${barW}%"></span></span>
+        </span>
+        <span class="col-amount">${fmtAmount(d.f6)}</span>
+        <span class="col-flow ${flowCls}">${fmtFlow(d.f62)}</span>
+        <button class="chart-btn${chartExpandedSet.has(bk) ? ' active' : ''}" data-bk="${bk}" title="走势图">∿</button>
+        <button class="expand-btn${isExpanded ? ' expanded' : ''}" data-bk="${bk}" title="查看成分股">▾</button>
+      </div>
+      <div class="chart-panel" id="chart-${bk}" style="display:${chartExpandedSet.has(bk) ? 'block' : 'none'}">
+        <div class="chart-range-bar">
+          ${CHART_RANGES.map(r => `<button class="crb${(chartRangeMap[bk]||CHART_RANGES[0].label)===r.label?' active':''}" data-range="${r.label}">${r.label}</button>`).join('')}
+          <span class="chart-period-chg flat"></span>
+        </div>
+        <div class="chart-svg-wrap"></div>
+      </div>
+      <div class="stock-panel" id="stocks-${bk}" style="display:${isExpanded ? 'block' : 'none'}"></div>
+    `;
+
+    list.appendChild(wrap);
+
+    // 如果之前已展开，恢复内容
+    if (isExpanded && stockCache[bk]) {
+      renderStockPanel(bk, stockCache[bk]);
+    }
+  });
+
+  // 绑定展开按钮事件
+  list.querySelectorAll('.expand-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleStocks(btn.dataset.bk, btn));
+  });
+
+  // 绑定走势图按钮
+  list.querySelectorAll('.chart-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleChart(btn.dataset.bk, btn));
+  });
+
+  // 恢复已展开的走势图
+  data.forEach(d => {
+    const bk = d.f12;
+    if (!chartExpandedSet.has(bk)) return;
+    const panel = document.getElementById(`chart-${bk}`);
+    if (!panel) return;
+    bindChartPanel(bk, panel);
+    const rangeLabel = chartRangeMap[bk] || CHART_RANGES[0].label;
+    const range = CHART_RANGES.find(r => r.label === rangeLabel) || CHART_RANGES[0];
+    const svgWrap = panel.querySelector('.chart-svg-wrap');
+    const chgEl = panel.querySelector('.chart-period-chg');
+    const cached = chartCache[`${bk}_${rangeLabel}`];
+    if (cached) { updateChgEl(chgEl, cached, range.type === 'intraday'); renderChartSvg(bk, cached, svgWrap); }
+    else loadChart(bk, range, svgWrap, chgEl);
+  });
+}
+
+document.getElementById('refresh-btn').addEventListener('click', () => { fetchIndices(); fetchData(); });
+
+
+document.querySelectorAll('.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+    } else {
+      sortCol = col;
+      sortDir = 'desc';
+    }
+    document.querySelectorAll('.sortable').forEach(el => {
+      el.classList.remove('active', 'asc', 'desc');
+    });
+    th.classList.add('active', sortDir);
+    render();
+  });
+});
+
+fetchIndices();
+fetchData();
+setInterval(() => { fetchIndices(); fetchData(); }, 20000);

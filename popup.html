@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="header">
+    <div class="header-right">
+      <span id="update-time" class="update-time">--</span>
+      <button id="refresh-btn" class="refresh-btn" title="刷新">↻</button>
+    </div>
+  </div>
+
+  <div id="indices-bar"></div>
+
+  <div id="tab-sector">
+    <div class="col-header">
+      <span class="col-name">板块名称</span>
+      <span class="col-chg sortable active desc" data-col="f3">涨跌幅</span>
+      <span class="col-amount sortable" data-col="f6">成交额</span>
+      <span class="col-flow sortable" data-col="f62">主力净流入</span>
+    </div>
+    <div id="list" class="list"><div class="loading">加载中…</div></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

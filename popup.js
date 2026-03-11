@@ -167,7 +167,7 @@ function renderChartSvg(bk, data, container) {
 <text x="${x}" y="${H-4}" text-anchor="${anchor}" fill="#666" font-size="11" font-family="monospace">${dateStr}</text>`;
   }).join('');
 
-  container.innerHTML = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
+  container.innerHTML = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;cursor:crosshair">
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
       <stop offset="100%" stop-color="${color}" stop-opacity="0.03"/>
@@ -175,7 +175,58 @@ function renderChartSvg(bk, data, container) {
     ${hGrids}${vGrids}
     <path d="${area}" fill="url(#${gid})"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <g class="ch" style="display:none">
+      <line class="ch-v" x1="0" y1="${pt}" x2="0" y2="${pt+ph}" stroke="#aaa" stroke-width="1" stroke-dasharray="3,2"/>
+      <line class="ch-h" x1="${pl}" y1="0" x2="${W-pr}" y2="0" stroke="#aaa" stroke-width="1" stroke-dasharray="3,2"/>
+      <circle class="ch-dot" r="3.5" fill="${color}" stroke="#0a0d14" stroke-width="1.5"/>
+    </g>
+    <g class="ch-tip" style="display:none">
+      <rect class="tt-bg" width="88" height="38" rx="4" fill="#1e2535" stroke="#323a50" stroke-width="1"/>
+      <text class="tt-date" dx="8" dy="14" fill="#aaa" font-size="11" font-family="monospace"></text>
+      <text class="tt-pct"  dx="8" dy="30" font-size="13" font-weight="700" font-family="monospace"></text>
+    </g>
+    <rect x="${pl}" y="${pt}" width="${pw}" height="${ph}" fill="transparent"/>
   </svg>`;
+
+  const svgEl = container.querySelector('svg');
+  const chG   = svgEl.querySelector('.ch');
+  const tipG  = svgEl.querySelector('.ch-tip');
+  const chV   = svgEl.querySelector('.ch-v');
+  const chH   = svgEl.querySelector('.ch-h');
+  const chDot = svgEl.querySelector('.ch-dot');
+  const ttBg  = svgEl.querySelector('.tt-bg');
+  const ttDate= svgEl.querySelector('.tt-date');
+  const ttPct = svgEl.querySelector('.tt-pct');
+
+  svgEl.addEventListener('mousemove', e => {
+    const r = svgEl.getBoundingClientRect();
+    const mx = (e.clientX - r.left) * (W / r.width);
+    const idx = Math.max(0, Math.min(data.length - 1, Math.round((mx - pl) / pw * (data.length - 1))));
+    const px = cx(idx), py = cy(pcts[idx]);
+    const pct = pcts[idx];
+
+    chG.style.display = '';
+    tipG.style.display = '';
+
+    chV.setAttribute('x1', px); chV.setAttribute('x2', px);
+    chH.setAttribute('y1', py); chH.setAttribute('y2', py);
+    chDot.setAttribute('cx', px); chDot.setAttribute('cy', py);
+
+    const ttW = 88, ttH = 38;
+    const ttX = px + ttW + 12 > W - pr ? px - ttW - 8 : px + 8;
+    const ttY = Math.max(pt, Math.min(pt + ph - ttH, py - ttH / 2));
+    ttBg.setAttribute('x', ttX); ttBg.setAttribute('y', ttY);
+    ttDate.setAttribute('x', ttX); ttDate.setAttribute('y', ttY);
+    ttPct.setAttribute('x', ttX);  ttPct.setAttribute('y', ttY);
+    ttDate.textContent = data[idx].date.slice(0, 10);
+    ttPct.textContent  = (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+    ttPct.setAttribute('fill', pct > 0 ? '#f04040' : pct < 0 ? '#18cc70' : '#888');
+  });
+
+  svgEl.addEventListener('mouseleave', () => {
+    chG.style.display = 'none';
+    tipG.style.display = 'none';
+  });
 }
 
 function updateChgEl(chgEl, data, isIntraday) {

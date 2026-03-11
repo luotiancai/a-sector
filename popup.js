@@ -400,7 +400,6 @@ function render() {
     return sortDir === 'desc' ? vb - va : va - vb;
   });
 
-  const maxAbs = Math.max(...data.map(d => Math.abs(Number(d.f3) || 0)), 1);
   const list = document.getElementById('list');
   list.innerHTML = '';
 
@@ -411,7 +410,6 @@ function render() {
     const isFlat = chg === 0 || isNaN(chg);
     const cls = isFlat ? 'flat' : isUp ? 'up' : 'down';
     const chgText = isNaN(chg) ? '—' : (isUp ? '+' : '') + fmt(chg) + '%';
-    const barW = isFlat ? 0 : Math.round((Math.abs(chg) / maxAbs) * 100);
     const flow = Number(d.f62);
     const flowCls = isNaN(flow) ? '' : flow > 0 ? 'flow-up' : 'flow-down';
     const isExpanded = expandedSet.has(bk);
@@ -422,10 +420,7 @@ function render() {
       <div class="row">
         <span class="col-rank">${i + 1}</span>
         <span class="col-name">${d.f14 || '—'}</span>
-        <span class="col-chg ${cls}">
-          <span class="chg-text">${chgText}</span>
-          <span class="bar-wrap"><span class="bar ${cls}" style="width:${barW}%"></span></span>
-        </span>
+        <span class="col-chg ${cls}"><span class="chg-text">${chgText}</span></span>
         <span class="col-amount">${fmtAmount(d.f6)}</span>
         <span class="col-flow ${flowCls}">${fmtFlow(d.f62)}</span>
         <button class="chart-btn${chartExpandedSet.has(bk) ? ' active' : ''}" data-bk="${bk}" title="走势图">∿</button>

@@ -81,7 +81,7 @@ body {
   background: #0d1018;
 }
 .col-header .col-name { flex: 1; }
-.col-header .col-chg { width: 140px; text-align: right; }
+.col-header .col-chg { width: 72px; text-align: right; }
 .col-header .col-amount { width: 72px; text-align: right; }
 .col-header .col-flow { width: 80px; text-align: right; }
 .col-header::after { content: ''; width: 26px; flex-shrink: 0; }
@@ -138,33 +138,14 @@ body {
 
 /* 涨跌幅列 */
 .row .col-chg {
-  width: 140px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: flex-end;
+  width: 72px;
+  text-align: right;
   flex-shrink: 0;
 }
 .chg-text {
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  width: 58px;
-  text-align: right;
-  flex-shrink: 0;
-}
-.bar-wrap {
-  width: 56px;
-  height: 5px;
-  background: #1e2230;
-  border-radius: 3px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.bar {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
 }
 
 /* 颜色 — A股惯例：红涨绿跌 */

@@ -117,41 +117,54 @@ async function fetchKline(bk, range) {
 
 function renderChartSvg(bk, data, container) {
   if (!data.length) { container.innerHTML = '<div class="chart-empty">暂无数据</div>'; return; }
-  const W = 492, H = 110, pt = 8, pb = 18, pl = 46, pr = 6;
+  const W = 492, H = 120, pt = 10, pb = 20, pl = 46, pr = 6;
   const pw = W - pl - pr, ph = H - pt - pb;
-  const closes = data.map(d => d.close);
-  const minV = Math.min(...closes), maxV = Math.max(...closes);
-  const span = maxV - minV || minV * 0.001 || 1;
+
+  // 转为相对起点的涨跌幅 %
+  const base = data[0].close;
+  const pcts = data.map(d => (d.close - base) / base * 100);
+  const minP = Math.min(...pcts), maxP = Math.max(...pcts);
+  const pad = (maxP - minP) * 0.12 || 0.5;
+  const lo = minP - pad, hi = maxP + pad;
+  const span = hi - lo;
+
   const cx = i => pl + (i / Math.max(data.length - 1, 1)) * pw;
-  const cy = v => pt + (1 - (v - minV) / span) * ph;
-  const isUp = closes[closes.length - 1] >= closes[0];
+  const cy = p => pt + (1 - (p - lo) / span) * ph;
+
+  const isUp = pcts[pcts.length - 1] >= 0;
   const color = isUp ? '#f04040' : '#18cc70';
   const gid = `cg_${bk}`;
-  const pts = data.map((d, i) => `${cx(i).toFixed(1)},${cy(d.close).toFixed(1)}`);
+  const pts = pcts.map((p, i) => `${cx(i).toFixed(1)},${cy(p).toFixed(1)}`);
   const line = `M ${pts.join(' L ')}`;
-  const area = `M ${cx(0).toFixed(1)},${(pt+ph).toFixed(1)} L ${pts.join(' L ')} L ${cx(data.length-1).toFixed(1)},${(pt+ph).toFixed(1)} Z`;
-  const refY = cy(closes[0]).toFixed(1);
-  const n = data.length;
+  const area = `M ${cx(0).toFixed(1)},${cy(0).toFixed(1)} L ${pts.join(' L ')} L ${cx(data.length-1).toFixed(1)},${cy(0).toFixed(1)} Z`;
+  const refY = cy(0).toFixed(1); // 0% 基准线
 
-  const fmtP = v => v >= 10000 ? (v/10000).toFixed(2)+'w' : v >= 1000 ? v.toFixed(0) : v >= 100 ? v.toFixed(1) : v.toFixed(2);
+  // 计算合适的网格步长
+  const range = hi - lo;
+  const rawStep = range / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [0.5, 1, 2, 2.5, 5, 10].map(s => s * mag).find(s => range / s <= 6) || rawStep;
+  const gridStart = Math.ceil(lo / step) * step;
+  const gridPcts = [];
+  for (let g = gridStart; g <= hi + 1e-9; g += step) gridPcts.push(parseFloat(g.toFixed(6)));
 
-  // 水平网格线 + 右侧价格标签（4条，均分）
-  const hGrids = [0, 0.25, 0.5, 0.75, 1].map(t => {
-    const y = (pt + t * ph).toFixed(1);
-    const price = maxV - t * span;
-    const labelY = t === 0 ? parseFloat(y) + 9 : t === 1 ? parseFloat(y) - 2 : parseFloat(y) + 3.5;
-    return `<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="#1c2030" stroke-width="1"/>
-<text x="${pl-4}" y="${labelY.toFixed(1)}" text-anchor="end" fill="#555" font-size="9" font-family="monospace">${fmtP(price)}</text>`;
+  const hGrids = gridPcts.map(p => {
+    const y = cy(p).toFixed(1);
+    const isZero = Math.abs(p) < 1e-6;
+    const label = (p > 0 ? '+' : '') + p.toFixed(p % 1 === 0 ? 0 : 1) + '%';
+    return `<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="${isZero ? '#2e3650' : '#1c2030'}" stroke-width="1" ${isZero ? 'stroke-dasharray="4,3"' : ''}/>
+<text x="${pl-5}" y="${(parseFloat(y)+3.5).toFixed(1)}" text-anchor="end" fill="${isZero ? '#888' : '#666'}" font-size="11" font-family="monospace">${label}</text>`;
   }).join('');
 
-  // 垂直网格线 + 下方日期标签（对齐实际数据点）
+  // 垂直网格线 + 日期标签
+  const n = data.length;
   const vIdxs = n <= 2 ? [0, n-1] : [0, Math.floor(n/4), Math.floor(n/2), Math.floor(n*3/4), n-1];
   const vGrids = vIdxs.map((i, idx) => {
     const x = cx(i).toFixed(1);
     const anchor = idx === 0 ? 'start' : idx === vIdxs.length-1 ? 'end' : 'middle';
-    const dateStr = data[i].date.length > 5 ? data[i].date.slice(5) : data[i].date;
+    const dateStr = data[i].date.slice(5);
     return `<line x1="${x}" y1="${pt}" x2="${x}" y2="${pt+ph}" stroke="#1c2030" stroke-width="1"/>
-<text x="${x}" y="${H-3}" text-anchor="${anchor}" fill="#555" font-size="9" font-family="monospace">${dateStr}</text>`;
+<text x="${x}" y="${H-4}" text-anchor="${anchor}" fill="#666" font-size="11" font-family="monospace">${dateStr}</text>`;
   }).join('');
 
   container.innerHTML = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
@@ -160,7 +173,6 @@ function renderChartSvg(bk, data, container) {
       <stop offset="100%" stop-color="${color}" stop-opacity="0.03"/>
     </linearGradient></defs>
     ${hGrids}${vGrids}
-    <line x1="${pl}" y1="${refY}" x2="${W-pr}" y2="${refY}" stroke="#2e3650" stroke-width="1" stroke-dasharray="4,3"/>
     <path d="${area}" fill="url(#${gid})"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
   </svg>`;

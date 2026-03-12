@@ -103,6 +103,7 @@ async function fetchKline(bk, range) {
       const p = k.split(',');
       return { date: p[0], close: parseFloat(p[1]) };
     }).filter(d => !isNaN(d.close));
+    data.preClose = json?.data?.preClose;
   } else {
     const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=90.${bk}&fields1=f1&fields2=f51,f53&klt=101&fqt=1&beg=${begDate(range.days)}&end=20500101`;
     const res = await fetch(url);
@@ -121,8 +122,8 @@ function renderChartSvg(bk, data, container) {
   const W = 492, H = 120, pt = 10, pb = 20, pl = 46, pr = 6;
   const pw = W - pl - pr, ph = H - pt - pb;
 
-  // 转为相对起点的涨跌幅 %
-  const base = data[0].close;
+  // 转为相对昨收（intraday）或起点（历史）的涨跌幅 %
+  const base = data.preClose != null ? data.preClose : data[0].close;
   const pcts = data.map(d => (d.close - base) / base * 100);
   const minP = Math.min(...pcts), maxP = Math.max(...pcts);
   const pad = (maxP - minP) * 0.12 || 0.5;
@@ -232,7 +233,8 @@ function renderChartSvg(bk, data, container) {
 
 function updateChgEl(chgEl, data, isIntraday) {
   if (data.length < 2) { chgEl.textContent = ''; return; }
-  const pct = (data[data.length-1].close - data[0].close) / data[0].close * 100;
+  const base = data.preClose != null ? data.preClose : data[0].close;
+  const pct = (data[data.length-1].close - base) / base * 100;
   chgEl.className = `chart-period-chg ${pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'}`;
   chgEl.textContent = (isIntraday ? '今日 ' : '') + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
 }

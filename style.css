@@ -403,31 +403,39 @@ body {
 
 /* ── 大盘资金栏 ── */
 #market-bar {
-  display: flex;
-  padding: 6px 14px;
+  padding: 7px 14px;
   border-bottom: 1px solid #1a1e2a;
   background: #0b0e16;
-  min-height: 36px;
+  min-height: 34px;
 }
-.mkt-item {
-  flex: 1;
+.mkt-vol-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
 }
 .mkt-label {
-  font-size: 10px;
+  font-size: 11px;
   color: #555;
 }
 .mkt-val {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ddd;
+}
+.mkt-diff {
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: #aaa;
 }
-.mkt-val.flow-up   { color: #f04040; }
-.mkt-val.flow-down { color: #18cc70; }
+.mkt-diff.up   { color: #f04040; }
+.mkt-diff.down { color: #18cc70; }
+.mkt-prev {
+  margin-left: auto;
+  font-size: 11px;
+  color: #555;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Tab 导航 ── */
 #tab-nav {

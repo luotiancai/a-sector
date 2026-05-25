@@ -643,9 +643,16 @@ function renderNews(analysisMap) {
   const el = document.getElementById('news-list');
   if (!newsData.length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
 
-  const visibleNews = analysisMap
+  const visibleNews = (analysisMap
     ? newsData.filter((_, i) => !analysisMap[i]?.skip)
-    : newsData;
+    : newsData
+  ).filter((item, i) => {
+    const origIdx = analysisMap ? newsData.indexOf(item) : i;
+    const ai = analysisMap?.[origIdx];
+    const sentiment = ai ? ai.s : newsAnalyze(item.content || '');
+    const sectors = ai ? (ai.tags || []) : newsMatchSectors(item.content || '');
+    return !(sentiment === 'neutral' && sectors.length === 0);
+  });
 
   const items = visibleNews.map((item, i) => {
     const origIdx = analysisMap ? newsData.indexOf(item) : i;

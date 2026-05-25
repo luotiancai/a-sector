@@ -7,19 +7,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  if (msg.type === 'GEMINI') {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${msg.key}`;
-    fetch(url, {
+  if (msg.type === 'DEEPSEEK') {
+    fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${msg.key}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: msg.prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: msg.prompt }],
+        response_format: { type: 'json_object' },
       }),
     })
       .then(r => r.json())
       .then(json => {
-        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+        const text = json?.choices?.[0]?.message?.content || '[]';
         sendResponse({ ok: true, text });
       })
       .catch(e => sendResponse({ ok: false, error: e.message }));

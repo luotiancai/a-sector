@@ -525,13 +525,13 @@ function newsMatchSectors(text) {
 
 let newsData = [];
 let newsLoaded = false;
-let geminiKey = '';
+let deepseekKey = '';
 
 // ── Settings ──
 async function loadSettings() {
-  const res = await chrome.storage.local.get('geminiKey');
-  geminiKey = res.geminiKey || '';
-  if (geminiKey) document.getElementById('gemini-key-input').value = '••••••••';
+  const res = await chrome.storage.local.get('deepseekKey');
+  deepseekKey = res.deepseekKey || '';
+  if (deepseekKey) document.getElementById('deepseek-key-input').value = '••••••••';
 }
 
 document.getElementById('settings-btn').addEventListener('click', () => {
@@ -543,11 +543,11 @@ document.getElementById('settings-btn').addEventListener('click', () => {
 });
 
 document.getElementById('save-key-btn').addEventListener('click', async () => {
-  const val = document.getElementById('gemini-key-input').value.trim();
+  const val = document.getElementById('deepseek-key-input').value.trim();
   if (!val || val === '••••••••') return;
-  await chrome.storage.local.set({ geminiKey: val });
-  geminiKey = val;
-  document.getElementById('gemini-key-input').value = '••••••••';
+  await chrome.storage.local.set({ deepseekKey: val });
+  deepseekKey = val;
+  document.getElementById('deepseek-key-input').value = '••••••••';
   document.getElementById('settings-panel').style.display = 'none';
   document.getElementById('settings-btn').classList.remove('active');
   if (activeTab === 'news' && newsData.length) {
@@ -557,9 +557,9 @@ document.getElementById('save-key-btn').addEventListener('click', async () => {
   }
 });
 
-// ── Gemini 分析 ──
+// ── DeepSeek 分析 ──
 function analyzeNews() {
-  if (!geminiKey || !newsData.length) return Promise.resolve(null);
+  if (!deepseekKey || !newsData.length) return Promise.resolve(null);
   const sectors = Object.keys(NEWS_SECTOR_MAP).join('、');
   const items = newsData.map((item, i) => `${i}. ${item.content}`).join('\n');
   const prompt = `你是A股事件驱动交易员。分析以下新闻对A股的影响。
@@ -592,7 +592,7 @@ skip=true 时 s/tags/r 填空字符串
 ${items}`;
 
   return new Promise(resolve => {
-    chrome.runtime.sendMessage({ type: 'GEMINI', key: geminiKey, prompt }, resp => {
+    chrome.runtime.sendMessage({ type: 'DEEPSEEK', key: deepseekKey, prompt }, resp => {
       if (chrome.runtime.lastError || !resp?.ok) { resolve(null); return; }
       try {
         const raw = resp.text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
@@ -627,7 +627,7 @@ async function fetchNews() {
       important: item.top_value > 0,
     }));
     newsLoaded = true;
-    if (geminiKey) {
+    if (deepseekKey) {
       document.getElementById('news-list').innerHTML = '<div class="loading">AI 分析中…</div>';
       const analysisMap = await analyzeNews();
       renderNews(analysisMap);

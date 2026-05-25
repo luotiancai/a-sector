@@ -562,14 +562,18 @@ function analyzeNews() {
   if (!geminiKey || !newsData.length) return Promise.resolve(null);
   const sectors = Object.keys(NEWS_SECTOR_MAP).join('、');
   const items = newsData.map((item, i) => `${i}. ${item.content}`).join('\n');
-  const prompt = `你是A股市场分析师。分析以下财经快讯，判断每条对A股的影响。
+  const prompt = `你是A股市场分析师。分析以下财经快讯，只保留与A股有实际关联的新闻。
 
 可选板块：${sectors}
 
 严格只返回JSON数组，不要任何其他文字：
-[{"i":0,"s":"bullish","tags":["板块名"],"r":"原因10字内"},...]
-s取值：bullish(利好)/bearish(利空)/neutral(中性或与A股无关)
-tags：最多2个相关板块，无关则[]
+[{"i":0,"skip":false,"s":"bullish","tags":["板块名"],"r":"原因10字内"},...]
+
+字段说明：
+- skip: true=与A股无关（纯境外市场、社会事件、无影响的海外数据），直接过滤不展示；false=保留
+- s: bullish(利好)/bearish(利空)/neutral(影响中性但值得关注)
+- tags: 最多2个相关板块，无关则[]
+- r: 10字内判断理由，skip=true时可为空字符串
 
 新闻：
 ${items}`;
@@ -646,9 +650,14 @@ function renderNews(analysisMap) {
     </div>`;
   }
 
-  const items = newsData.map((item, i) => {
+  const visibleNews = analysisMap
+    ? newsData.filter((_, i) => !analysisMap[i]?.skip)
+    : newsData;
+
+  const items = visibleNews.map((item, i) => {
+    const origIdx = analysisMap ? newsData.indexOf(item) : i;
     const text = item.content || '';
-    const ai = analysisMap?.[i];
+    const ai = analysisMap?.[origIdx];
     const sentiment = ai ? ai.s : newsAnalyze(text);
     const sectors = ai ? (ai.tags || []) : newsMatchSectors(text);
     const reason = ai?.r || '';

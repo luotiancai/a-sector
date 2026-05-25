@@ -539,12 +539,14 @@ async function fetchNews() {
   const el = document.getElementById('news-list');
   el.innerHTML = '<div class="loading">加载中…</div>';
   try {
-    const url = `https://np-mfd.eastmoney.com/ggzt/api/flash?callback=&page=1&pagesize=30&type=0&client=web&_=${Date.now()}`;
+    const url = `https://zhibo.sina.com.cn/api/zhibo/feed?zhibo_id=152&page=1&page_size=30&type=0&id=0&_=${Date.now()}`;
     const raw = await bgFetch(url);
-    let json;
-    try { json = JSON.parse(raw); }
-    catch { json = JSON.parse(raw.replace(/^[^(]+\(/, '').replace(/\)\s*;?\s*$/, '')); }
-    newsData = json?.data?.list || [];
+    const json = JSON.parse(raw);
+    newsData = (json?.result?.data?.feed?.list || []).map(item => ({
+      content: (item.rich_text || '').replace(/<[^>]+>/g, '').trim(),
+      showtime: (item.create_time || '').slice(11, 16),
+      important: item.top_value > 0,
+    }));
     newsLoaded = true;
     renderNews();
   } catch {
@@ -575,11 +577,11 @@ function renderNews() {
   }
 
   const items = newsData.map(item => {
-    const text = (item.content || item.title || '').replace(/<[^>]+>/g, '');
+    const text = item.content || '';
     const sentiment = newsAnalyze(text);
     const sectors = newsMatchSectors(text);
     const time = item.showtime || '';
-    const isImportant = item.type === 1 || item.level === 1;
+    const isImportant = item.important;
     const sentLabel = sentiment === 'bullish' ? '利好' : sentiment === 'bearish' ? '利空' : '中性';
     const sectorTags = sectors.map(s => `<span class="news-sector-tag">${s}</span>`).join('');
     return `<div class="news-item${isImportant ? ' important' : ''}">

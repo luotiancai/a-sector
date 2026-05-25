@@ -16,6 +16,7 @@
     "https://fundsuggest.eastmoney.com/*",
     "https://fundmobapi.eastmoney.com/*",
     "https://fund.eastmoney.com/*",
-    "https://*.eastmoney.com/*"
+    "https://*.eastmoney.com/*",
+    "https://zhibo.sina.com.cn/*"
   ]
 }

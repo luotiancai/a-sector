@@ -525,6 +525,68 @@ function newsMatchSectors(text) {
 
 let newsData = [];
 let newsLoaded = false;
+let geminiKey = '';
+
+// ── Settings ──
+async function loadSettings() {
+  const res = await chrome.storage.local.get('geminiKey');
+  geminiKey = res.geminiKey || '';
+  if (geminiKey) document.getElementById('gemini-key-input').value = '••••••••';
+}
+
+document.getElementById('settings-btn').addEventListener('click', () => {
+  const panel = document.getElementById('settings-panel');
+  const btn = document.getElementById('settings-btn');
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : '';
+  btn.classList.toggle('active', !visible);
+});
+
+document.getElementById('save-key-btn').addEventListener('click', async () => {
+  const val = document.getElementById('gemini-key-input').value.trim();
+  if (!val || val === '••••••••') return;
+  await chrome.storage.local.set({ geminiKey: val });
+  geminiKey = val;
+  document.getElementById('gemini-key-input').value = '••••••••';
+  document.getElementById('settings-panel').style.display = 'none';
+  document.getElementById('settings-btn').classList.remove('active');
+  if (activeTab === 'news' && newsData.length) {
+    document.getElementById('news-list').innerHTML = '<div class="loading">AI 分析中…</div>';
+    const analysisMap = await analyzeNews();
+    renderNews(analysisMap);
+  }
+});
+
+// ── Gemini 分析 ──
+function analyzeNews() {
+  if (!geminiKey || !newsData.length) return Promise.resolve(null);
+  const sectors = Object.keys(NEWS_SECTOR_MAP).join('、');
+  const items = newsData.map((item, i) => `${i}. ${item.content}`).join('\n');
+  const prompt = `你是A股市场分析师。分析以下财经快讯，判断每条对A股的影响。
+
+可选板块：${sectors}
+
+严格只返回JSON数组，不要任何其他文字：
+[{"i":0,"s":"bullish","tags":["板块名"],"r":"原因10字内"},...]
+s取值：bullish(利好)/bearish(利空)/neutral(中性或与A股无关)
+tags：最多2个相关板块，无关则[]
+
+新闻：
+${items}`;
+
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage({ type: 'GEMINI', key: geminiKey, prompt }, resp => {
+      if (chrome.runtime.lastError || !resp?.ok) { resolve(null); return; }
+      try {
+        const raw = resp.text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const arr = JSON.parse(raw);
+        const map = {};
+        arr.forEach(r => { map[r.i] = r; });
+        resolve(map);
+      } catch { resolve(null); }
+    });
+  });
+}
 
 function bgFetch(url) {
   return new Promise((resolve, reject) => {
@@ -548,13 +610,19 @@ async function fetchNews() {
       important: item.top_value > 0,
     }));
     newsLoaded = true;
-    renderNews();
+    if (geminiKey) {
+      document.getElementById('news-list').innerHTML = '<div class="loading">AI 分析中…</div>';
+      const analysisMap = await analyzeNews();
+      renderNews(analysisMap);
+    } else {
+      renderNews(null);
+    }
   } catch {
     el.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
   }
 }
 
-function renderNews() {
+function renderNews(analysisMap) {
   const el = document.getElementById('news-list');
   if (!newsData.length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
 
@@ -566,6 +634,7 @@ function renderNews() {
     const netFlow = rawData.reduce((sum, d) => sum + (Number(d.f62) || 0), 0);
     const sentiment = upCount >= downCount * 1.5 ? '偏多' : downCount >= upCount * 1.5 ? '偏空' : '分化';
     const sentCls = upCount > downCount ? 'bullish' : upCount < downCount ? 'bearish' : 'neutral';
+    const aiLabel = analysisMap ? '<span class="news-ov-ai">AI分析</span>' : '';
     overviewHtml = `<div class="news-overview">
       <span class="news-ov-label">板块</span>
       <span class="news-ov-up">${upCount}涨</span>
@@ -573,22 +642,26 @@ function renderNews() {
       <span class="news-ov-down">${downCount}跌</span>
       <span class="news-ov-sent ${sentCls}">${sentiment}</span>
       <span class="news-ov-flow ${netFlow >= 0 ? 'flow-up' : 'flow-down'}">${netFlow >= 0 ? '净流入' : '净流出'}&nbsp;${fmtAmount(Math.abs(netFlow))}</span>
+      ${aiLabel}
     </div>`;
   }
 
-  const items = newsData.map(item => {
+  const items = newsData.map((item, i) => {
     const text = item.content || '';
-    const sentiment = newsAnalyze(text);
-    const sectors = newsMatchSectors(text);
+    const ai = analysisMap?.[i];
+    const sentiment = ai ? ai.s : newsAnalyze(text);
+    const sectors = ai ? (ai.tags || []) : newsMatchSectors(text);
+    const reason = ai?.r || '';
     const time = item.showtime || '';
     const isImportant = item.important;
     const sentLabel = sentiment === 'bullish' ? '利好' : sentiment === 'bearish' ? '利空' : '中性';
     const sectorTags = sectors.map(s => `<span class="news-sector-tag">${s}</span>`).join('');
+    const reasonTag = reason ? `<span class="news-reason">${reason}</span>` : '';
     return `<div class="news-item${isImportant ? ' important' : ''}">
       <div class="news-meta">
         <span class="news-time">${time}</span>
         <span class="news-badge ${sentiment}">${sentLabel}</span>
-        ${sectorTags}
+        ${sectorTags}${reasonTag}
       </div>
       <div class="news-text">${text}</div>
     </div>`;
@@ -636,6 +709,9 @@ document.querySelectorAll('.sortable').forEach(th => {
   });
 });
 
-fetchIndices();
-fetchData();
-setInterval(() => { fetchIndices(); fetchData(); }, 20000);
+(async () => {
+  await loadSettings();
+  fetchIndices();
+  fetchData();
+  setInterval(() => { fetchIndices(); fetchData(); }, 20000);
+})();

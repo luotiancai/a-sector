@@ -43,6 +43,71 @@ body {
 }
 .refresh-btn:hover { color: #fff; border-color: #555; background: #1e2230; }
 
+/* ── 设置按钮 ── */
+.icon-btn {
+  background: none;
+  border: 1px solid #2a2f40;
+  color: #666;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:hover { color: #fff; border-color: #555; background: #1e2230; }
+.icon-btn.active { color: #5a8fff; border-color: #3a5aaa; background: #131a2a; }
+
+/* ── 设置面板 ── */
+#settings-panel {
+  padding: 10px 14px;
+  background: #0d1018;
+  border-bottom: 1px solid #1a1e2a;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-label {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+}
+.settings-input {
+  flex: 1;
+  background: #111520;
+  border: 1px solid #2a3050;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+  font-family: monospace;
+  min-width: 0;
+}
+.settings-input:focus { border-color: #5a8fff; }
+.settings-save {
+  background: #132040;
+  border: 1px solid #2a4a8a;
+  color: #5a9fff;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.settings-save:hover { background: #1a3060; }
+.settings-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #555;
+}
+
 /* ── 全球指数栏 ── */
 #indices-bar {
   display: flex;
@@ -436,6 +501,23 @@ body {
   border: 1px solid #1e2a40;
   border-radius: 3px;
   padding: 0px 5px;
+}
+.news-reason {
+  font-size: 10px;
+  color: #8a7a40;
+  background: #1a1608;
+  border: 1px solid #2e2610;
+  border-radius: 3px;
+  padding: 0px 5px;
+}
+.news-ov-ai {
+  margin-left: auto;
+  font-size: 10px;
+  color: #5a8fff;
+  background: #0d1830;
+  border: 1px solid #1e3a6a;
+  border-radius: 3px;
+  padding: 1px 6px;
 }
 .news-text {
   font-size: 13px;

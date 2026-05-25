@@ -34,11 +34,12 @@ const CUSTOM_SECTORS = {
   BK1128: 'CPO',
   BK0578: '稀土永磁',
   BK0523: '新材料',
-  BK1206: '基础化工',
+  BK1019: '化学原料',
+  BK0690: '氟化工',
   BK0457: '电网设备',
   BK1184: '机器人',
   BK0963: '商业航天',
-  BK0800: '人工智能',
+  BK1629: 'AI应用',
   BK1036: '半导体',
   BK1031: '光伏',
   BK1277: '白酒',
@@ -390,6 +391,15 @@ function render() {
   });
 
   const list = document.getElementById('list');
+
+  // 保存滚动位置
+  const listScrollTop = list.scrollTop;
+  const panelScrollTops = {};
+  expandedSet.forEach(bk => {
+    const panel = document.getElementById(`stocks-${bk}`);
+    if (panel) panelScrollTops[bk] = panel.scrollTop;
+  });
+
   list.innerHTML = '';
 
   data.forEach((d, i) => {
@@ -443,6 +453,14 @@ function render() {
     btn.addEventListener('click', () => toggleChart(btn.dataset.bk, btn));
   });
 
+  // 还原滚动位置
+  list.scrollTop = listScrollTop;
+  expandedSet.forEach(bk => {
+    if (panelScrollTops[bk] == null) return;
+    const panel = document.getElementById(`stocks-${bk}`);
+    if (panel) panel.scrollTop = panelScrollTops[bk];
+  });
+
   // 恢复已展开的走势图
   data.forEach(d => {
     const bk = d.f12;
@@ -460,7 +478,135 @@ function render() {
   });
 }
 
-document.getElementById('refresh-btn').addEventListener('click', () => { fetchIndices(); fetchData(); });
+// ── 新闻板块 ──
+
+const NEWS_SECTOR_MAP = {
+  '黄金':   ['黄金', '金价', '贵金属'],
+  '稀土永磁': ['稀土', '永磁', '稀土永磁'],
+  '半导体':  ['芯片', '半导体', '集成电路', '晶圆', 'EDA', '光刻', 'GPU'],
+  'AI应用':  ['AI', '人工智能', '大模型', '算力', 'GPT', '智算中心'],
+  '机器人':  ['机器人', '人形机器人', '具身智能'],
+  '光伏':   ['光伏', '太阳能', '组件', '逆变器', '硅料'],
+  '电池':   ['电池', '锂电池', '动力电池', '碳酸锂', '储能'],
+  '汽车':   ['电动车', '新能源车', '充电桩', '整车', '比亚迪', '特斯拉'],
+  '创新药':  ['新药', '创新药', 'FDA', '临床试验', 'BLA', 'NDA'],
+  '医药':   ['医药', '医保', '集采', '仿制药'],
+  '军工':   ['军工', '国防', '军事', '导弹', '战机', '军费'],
+  '银行':   ['银行', '存款', '降准', '存款准备金', '信贷'],
+  '房地产':  ['房地产', '楼市', '房价', '商品房', '房企'],
+  '白酒':   ['白酒', '茅台', '五粮液', '汾酒', '洋河'],
+  '石油石化': ['石油', '原油', '天然气', '油价', 'OPEC'],
+  '商业航天': ['航天', '火箭', '卫星', '星链'],
+  '电力':   ['电力', '核电', '发电', '电网'],
+  '煤炭':   ['煤炭', '煤价', '动力煤', '焦煤'],
+  '工业金属': ['铜价', '铝价', '铜矿', '有色金属', '工业金属'],
+  '锂矿':   ['锂矿', '碳酸锂价', '氢氧化锂'],
+};
+
+const BULLISH_WORDS = ['利好', '超预期', '创新高', '大幅增长', '获批', '降准', '降息', '减税', '补贴', '政策支持', '扩产', '强劲', '扭亏', '首次盈利', '大幅上涨', '重大突破', '战略合作', '好于预期', '新突破'];
+const BEARISH_WORDS = ['利空', '不及预期', '业绩下滑', '大幅亏损', '净利润下降', '违规', '处罚', '立案', '被查', '债务危机', '破产', '退市', '大幅下跌', '暴跌', '萎缩', '下滑加剧', '亏损扩大'];
+
+function newsAnalyze(text) {
+  let b = 0, r = 0;
+  BULLISH_WORDS.forEach(k => { if (text.includes(k)) b++; });
+  BEARISH_WORDS.forEach(k => { if (text.includes(k)) r++; });
+  if (b > r) return 'bullish';
+  if (r > b) return 'bearish';
+  return 'neutral';
+}
+
+function newsMatchSectors(text) {
+  const res = [];
+  for (const [name, kw] of Object.entries(NEWS_SECTOR_MAP)) {
+    if (kw.some(k => text.includes(k))) res.push(name);
+  }
+  return res.slice(0, 3);
+}
+
+let newsData = [];
+let newsLoaded = false;
+
+async function fetchNews() {
+  const el = document.getElementById('news-list');
+  el.innerHTML = '<div class="loading">加载中…</div>';
+  try {
+    const url = `https://np-mfd.eastmoney.com/ggzt/api/flash?callback=&page=1&pagesize=30&type=0&client=web&_=${Date.now()}`;
+    const res = await fetch(url);
+    const raw = await res.text();
+    let json;
+    try { json = JSON.parse(raw); }
+    catch { json = JSON.parse(raw.replace(/^[^(]+\(/, '').replace(/\)\s*;?\s*$/, '')); }
+    newsData = json?.data?.list || [];
+    newsLoaded = true;
+    renderNews();
+  } catch {
+    el.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
+  }
+}
+
+function renderNews() {
+  const el = document.getElementById('news-list');
+  if (!newsData.length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
+
+  // 大盘概况
+  let overviewHtml = '';
+  if (rawData.length) {
+    const upCount = rawData.filter(d => Number(d.f3) > 0).length;
+    const downCount = rawData.filter(d => Number(d.f3) < 0).length;
+    const netFlow = rawData.reduce((sum, d) => sum + (Number(d.f62) || 0), 0);
+    const sentiment = upCount >= downCount * 1.5 ? '偏多' : downCount >= upCount * 1.5 ? '偏空' : '分化';
+    const sentCls = upCount > downCount ? 'bullish' : upCount < downCount ? 'bearish' : 'neutral';
+    overviewHtml = `<div class="news-overview">
+      <span class="news-ov-label">板块</span>
+      <span class="news-ov-up">${upCount}涨</span>
+      <span class="news-ov-sep">/</span>
+      <span class="news-ov-down">${downCount}跌</span>
+      <span class="news-ov-sent ${sentCls}">${sentiment}</span>
+      <span class="news-ov-flow ${netFlow >= 0 ? 'flow-up' : 'flow-down'}">${netFlow >= 0 ? '净流入' : '净流出'}&nbsp;${fmtAmount(Math.abs(netFlow))}</span>
+    </div>`;
+  }
+
+  const items = newsData.map(item => {
+    const text = (item.content || item.title || '').replace(/<[^>]+>/g, '');
+    const sentiment = newsAnalyze(text);
+    const sectors = newsMatchSectors(text);
+    const time = item.showtime || '';
+    const isImportant = item.type === 1 || item.level === 1;
+    const sentLabel = sentiment === 'bullish' ? '利好' : sentiment === 'bearish' ? '利空' : '中性';
+    const sectorTags = sectors.map(s => `<span class="news-sector-tag">${s}</span>`).join('');
+    return `<div class="news-item${isImportant ? ' important' : ''}">
+      <div class="news-meta">
+        <span class="news-time">${time}</span>
+        <span class="news-badge ${sentiment}">${sentLabel}</span>
+        ${sectorTags}
+      </div>
+      <div class="news-text">${text}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = overviewHtml + items;
+}
+
+// ── Tab 切换 ──
+let activeTab = 'sector';
+
+document.getElementById('tab-nav').querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    if (tab === activeTab) return;
+    activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('tab-sector').style.display = tab === 'sector' ? '' : 'none';
+    document.getElementById('tab-news').style.display = tab === 'news' ? '' : 'none';
+    if (tab === 'news' && !newsLoaded) fetchNews();
+  });
+});
+
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  fetchIndices();
+  if (activeTab === 'sector') { fetchData(); }
+  else { newsLoaded = false; fetchNews(); }
+});
 
 
 document.querySelectorAll('.sortable').forEach(th => {

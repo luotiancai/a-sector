@@ -7,12 +7,15 @@
     "default_popup": "popup.html",
     "default_title": "A股行业板块"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": [
     "https://push2.eastmoney.com/*",
     "https://push2his.eastmoney.com/*",
     "https://fundsuggest.eastmoney.com/*",
     "https://fundmobapi.eastmoney.com/*",
     "https://fund.eastmoney.com/*",
-    "https://np-mfd.eastmoney.com/*"
+    "https://*.eastmoney.com/*"
   ]
 }

@@ -526,13 +526,21 @@ function newsMatchSectors(text) {
 let newsData = [];
 let newsLoaded = false;
 
+function bgFetch(url) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'FETCH', url }, resp => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      resp?.ok ? resolve(resp.text) : reject(new Error(resp?.error || 'fetch failed'));
+    });
+  });
+}
+
 async function fetchNews() {
   const el = document.getElementById('news-list');
   el.innerHTML = '<div class="loading">加载中…</div>';
   try {
     const url = `https://np-mfd.eastmoney.com/ggzt/api/flash?callback=&page=1&pagesize=30&type=0&client=web&_=${Date.now()}`;
-    const res = await fetch(url);
-    const raw = await res.text();
+    const raw = await bgFetch(url);
     let json;
     try { json = JSON.parse(raw); }
     catch { json = JSON.parse(raw.replace(/^[^(]+\(/, '').replace(/\)\s*;?\s*$/, '')); }

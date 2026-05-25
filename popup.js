@@ -643,26 +643,6 @@ function renderNews(analysisMap) {
   const el = document.getElementById('news-list');
   if (!newsData.length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
 
-  // 大盘概况
-  let overviewHtml = '';
-  if (rawData.length) {
-    const upCount = rawData.filter(d => Number(d.f3) > 0).length;
-    const downCount = rawData.filter(d => Number(d.f3) < 0).length;
-    const netFlow = rawData.reduce((sum, d) => sum + (Number(d.f62) || 0), 0);
-    const sentiment = upCount >= downCount * 1.5 ? '偏多' : downCount >= upCount * 1.5 ? '偏空' : '分化';
-    const sentCls = upCount > downCount ? 'bullish' : upCount < downCount ? 'bearish' : 'neutral';
-    const aiLabel = analysisMap ? '<span class="news-ov-ai">AI分析</span>' : '';
-    overviewHtml = `<div class="news-overview">
-      <span class="news-ov-label">板块</span>
-      <span class="news-ov-up">${upCount}涨</span>
-      <span class="news-ov-sep">/</span>
-      <span class="news-ov-down">${downCount}跌</span>
-      <span class="news-ov-sent ${sentCls}">${sentiment}</span>
-      <span class="news-ov-flow ${netFlow >= 0 ? 'flow-up' : 'flow-down'}">${netFlow >= 0 ? '净流入' : '净流出'}&nbsp;${fmtAmount(Math.abs(netFlow))}</span>
-      ${aiLabel}
-    </div>`;
-  }
-
   const visibleNews = analysisMap
     ? newsData.filter((_, i) => !analysisMap[i]?.skip)
     : newsData;
@@ -689,7 +669,7 @@ function renderNews(analysisMap) {
     </div>`;
   }).join('');
 
-  el.innerHTML = overviewHtml + items;
+  el.innerHTML = items;
 }
 
 // ── Tab 切换 ──

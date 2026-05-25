@@ -431,36 +431,6 @@ body {
 .news-list::-webkit-scrollbar { width: 4px; }
 .news-list::-webkit-scrollbar-thumb { background: #2a2f40; border-radius: 2px; }
 
-/* ── 大盘概况 ── */
-.news-overview {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  background: #0a0d14;
-  border-bottom: 1px solid #1a1e2a;
-  font-size: 12px;
-}
-.news-ov-label { color: #666; }
-.news-ov-up   { color: #f04040; font-weight: 700; }
-.news-ov-down { color: #18cc70; font-weight: 700; }
-.news-ov-sep  { color: #444; }
-.news-ov-sent {
-  margin-left: 4px;
-  padding: 1px 7px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 700;
-}
-.news-ov-sent.bullish { background: #2a1414; color: #f04040; }
-.news-ov-sent.bearish { background: #0f2218; color: #18cc70; }
-.news-ov-sent.neutral { background: #1c2030; color: #888; }
-.news-ov-flow {
-  margin-left: auto;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ── 新闻条目 ── */
 .news-item {
   padding: 9px 14px;

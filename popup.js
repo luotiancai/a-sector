@@ -478,83 +478,6 @@ function render() {
   });
 }
 
-// ── 大盘资金面板 ──
-const mktData = { vol: null, prevVol: null };
-
-function predictVol(currentVol) {
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  let elapsed = 0;
-  if      (mins >= 570 && mins <= 690) elapsed = mins - 570;
-  else if (mins >  690 && mins <  780) elapsed = 120;
-  else if (mins >= 780 && mins <= 900) elapsed = 120 + mins - 780;
-  else if (mins >  900)                elapsed = 240;
-  if (!elapsed || !currentVol) return currentVol;
-  if (elapsed >= 240) return currentVol;
-  return currentVol / elapsed * 240;
-}
-
-async function fetchMarketData() {
-  const beg = (() => {
-    const d = new Date(); d.setDate(d.getDate() - 20);
-    return d.toISOString().slice(0, 10).replace(/-/g, '');
-  })();
-
-  const [volRes, shRes, szRes] = await Promise.allSettled([
-    fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f6&secids=1.000001,0.399001&_=${Date.now()}`).then(r => r.json()),
-    fetch(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.000001&fields1=f1&fields2=f51,f57&klt=101&fqt=0&beg=${beg}&end=20500101`).then(r => r.json()),
-    fetch(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=0.399001&fields1=f1&fields2=f51,f57&klt=101&fqt=0&beg=${beg}&end=20500101`).then(r => r.json()),
-  ]);
-
-  if (volRes.status === 'fulfilled') {
-    const map = {};
-    (volRes.value?.data?.diff || []).forEach(d => { map[d.f12] = Number(d.f6); });
-    mktData.vol = ((map['000001'] || 0) + (map['399001'] || 0)) || null;
-  }
-
-  const getSecondLast = res => {
-    if (res.status !== 'fulfilled') return 0;
-    const klines = res.value?.data?.klines || [];
-    if (klines.length < 2) return 0;
-    return parseFloat(klines[klines.length - 2].split(',')[1]) || 0;
-  };
-  const prevSh = getSecondLast(shRes);
-  const prevSz = getSecondLast(szRes);
-  mktData.prevVol = (prevSh + prevSz) || null;
-
-  updateMarketBar();
-}
-
-function updateMarketBar() {
-  const bar = document.getElementById('market-bar');
-  if (!bar || !mktData.vol) { if (bar) bar.innerHTML = ''; return; }
-
-  const predicted = predictVol(mktData.vol);
-  const diffPct = (mktData.prevVol && predicted)
-    ? (predicted - mktData.prevVol) / mktData.prevVol * 100
-    : null;
-  const diffHtml = diffPct != null
-    ? `<span class="mkt-diff ${diffPct >= 0 ? 'up' : 'down'}">${diffPct > 0 ? '+' : ''}${diffPct.toFixed(1)}%</span>`
-    : '';
-  const prevHtml = mktData.prevVol
-    ? `<span class="mkt-prev">昨 ${fmtAmount(mktData.prevVol)}</span>`
-    : '';
-
-  bar.innerHTML = `
-    <div class="mkt-item">
-      <span class="mkt-label">今日成交</span>
-      <span class="mkt-val">${fmtAmount(mktData.vol)}</span>
-    </div>
-    <div class="mkt-item mkt-predict">
-      <span class="mkt-label">预测全天</span>
-      <div class="mkt-predict-row">
-        <span class="mkt-val">${fmtAmount(predicted)}</span>
-        ${diffHtml}
-        ${prevHtml}
-      </div>
-    </div>`;
-}
-
 // ── 新闻板块 ──
 
 const NEWS_SECTOR_MAP = {
@@ -786,7 +709,6 @@ document.getElementById('tab-nav').querySelectorAll('.tab-btn').forEach(btn => {
 
 document.getElementById('refresh-btn').addEventListener('click', () => {
   fetchIndices();
-  fetchMarketData();
   if (activeTab === 'sector') { fetchData(); }
   else { newsLoaded = false; fetchNews(); }
 });
@@ -813,6 +735,5 @@ document.querySelectorAll('.sortable').forEach(th => {
   await loadSettings();
   fetchIndices();
   fetchData();
-  fetchMarketData();
-  setInterval(() => { fetchIndices(); fetchData(); fetchMarketData(); }, 20000);
+  setInterval(() => { fetchIndices(); fetchData(); }, 20000);
 })();

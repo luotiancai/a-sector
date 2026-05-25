@@ -401,53 +401,6 @@ body {
 }
 .stock-empty.error { color: #e05252; }
 
-/* ── 大盘资金栏 ── */
-#market-bar {
-  display: flex;
-  padding: 6px 14px;
-  border-bottom: 1px solid #1a1e2a;
-  background: #0b0e16;
-  gap: 0;
-}
-.mkt-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-}
-.mkt-item + .mkt-item {
-  border-left: 1px solid #1a1e2a;
-  padding-left: 14px;
-}
-.mkt-label {
-  font-size: 10px;
-  color: #555;
-}
-.mkt-val {
-  font-size: 14px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: #ddd;
-}
-.mkt-predict-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.mkt-diff {
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.mkt-diff.up   { color: #f04040; }
-.mkt-diff.down { color: #18cc70; }
-.mkt-prev {
-  font-size: 10px;
-  color: #555;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ── Tab 导航 ── */
 #tab-nav {
   display: flex;

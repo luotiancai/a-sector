@@ -498,3 +498,18 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.news-item.expanded .news-text {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+.news-expand-btn {
+  display: block;
+  margin-top: 3px;
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.news-expand-btn:hover { color: #aaa; }

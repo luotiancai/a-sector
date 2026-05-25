@@ -666,10 +666,23 @@ function renderNews(analysisMap) {
         ${sectorTags}${reasonTag}
       </div>
       <div class="news-text">${text}</div>
+      <button class="news-expand-btn">展开</button>
     </div>`;
   }).join('');
 
   el.innerHTML = items;
+
+  el.querySelectorAll('.news-expand-btn').forEach(btn => {
+    const item = btn.closest('.news-item');
+    const textEl = item.querySelector('.news-text');
+    if (textEl.scrollHeight <= textEl.clientHeight) {
+      btn.style.display = 'none';
+    }
+    btn.addEventListener('click', () => {
+      const expanded = item.classList.toggle('expanded');
+      btn.textContent = expanded ? '收起' : '展开';
+    });
+  });
 }
 
 // ── Tab 切换 ──

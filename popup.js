@@ -562,18 +562,29 @@ function analyzeNews() {
   if (!geminiKey || !newsData.length) return Promise.resolve(null);
   const sectors = Object.keys(NEWS_SECTOR_MAP).join('、');
   const items = newsData.map((item, i) => `${i}. ${item.content}`).join('\n');
-  const prompt = `你是A股市场分析师。分析以下财经快讯，只保留与A股有实际关联的新闻。
+  const prompt = `你是A股投资助手，帮用户过滤无关噪音，只保留真正影响A股的新闻。
+
+【必须 skip=true，直接过滤掉】
+- 境外社会事件：楼塌、火灾、事故、犯罪、战争伤亡细节
+- 与中国无关的境外小市场数据：菲律宾/印度/泰国/韩国/越南等股市涨跌、PMI、贸易数据
+- 纯境外公司动态：与A股无关的海外企业财报/并购
+- 无关行业：体育、娱乐、天气
+- 遇到任何拿不准的，一律 skip=true
+
+【保留 skip=false 的标准（必须满足其一）】
+1. 中国宏观政策：降准降息、财政刺激、产业政策
+2. 直接影响A股板块的行业消息
+3. 影响大宗商品定价的重大事件（原油、黄金、铜大幅波动原因）
+4. 中美关系、美联储决议等影响全球风险偏好的重大事件
+
+宁可过度过滤，绝不保留无关新闻。
 
 可选板块：${sectors}
 
 严格只返回JSON数组，不要任何其他文字：
 [{"i":0,"skip":false,"s":"bullish","tags":["板块名"],"r":"原因10字内"},...]
-
-字段说明：
-- skip: true=与A股无关（纯境外市场、社会事件、无影响的海外数据），直接过滤不展示；false=保留
-- s: bullish(利好)/bearish(利空)/neutral(影响中性但值得关注)
-- tags: 最多2个相关板块，无关则[]
-- r: 10字内判断理由，skip=true时可为空字符串
+s: bullish(利好)/bearish(利空)/neutral(中性但值得关注)
+skip=true时 s/tags/r 可为空
 
 新闻：
 ${items}`;

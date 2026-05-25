@@ -461,6 +461,8 @@ function render() {
     if (panel) panel.scrollTop = panelScrollTops[bk];
   });
 
+  updateMarketBar();
+
   // 恢复已展开的走势图
   data.forEach(d => {
     const bk = d.f12;
@@ -476,6 +478,61 @@ function render() {
     if (cached) { updateChgEl(chgEl, cached, range.type === 'intraday'); renderChartSvg(bk, cached, svgWrap); }
     else loadChart(bk, range, svgWrap, chgEl);
   });
+}
+
+// ── 大盘资金面板 ──
+const mktData = { vol: null, northBound: null };
+
+async function fetchMarketData() {
+  try {
+    const res = await fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f6&secids=1.000001,0.399001&_=${Date.now()}`);
+    const json = await res.json();
+    const map = {};
+    (json?.data?.diff || []).forEach(d => { map[d.f12] = Number(d.f6); });
+    mktData.vol = ((map['000001'] || 0) + (map['399001'] || 0)) || null;
+  } catch {}
+
+  try {
+    const res = await fetch(`https://push2.eastmoney.com/api/qt/kamt/get?ut=b2884a393a59ad64002292a3e90d46a5&fields1=f1,f2,f3,f4&fields2=f51,f52,f53,f54,f55,f56&_=${Date.now()}`);
+    const json = await res.json();
+    const { hk2sh, hk2sz } = json?.data || {};
+    mktData.northBound = (Number(hk2sh?.dayNetAmtIn) || 0) + (Number(hk2sz?.dayNetAmtIn) || 0); // 万元
+  } catch {}
+
+  updateMarketBar();
+}
+
+function updateMarketBar() {
+  const bar = document.getElementById('market-bar');
+  if (!bar) return;
+
+  const parts = [];
+
+  if (mktData.vol) {
+    parts.push(`<div class="mkt-item">
+      <span class="mkt-label">沪深成交</span>
+      <span class="mkt-val">${fmtAmount(mktData.vol)}</span>
+    </div>`);
+  }
+
+  if (mktData.northBound != null) {
+    const cls = mktData.northBound > 0 ? 'flow-up' : mktData.northBound < 0 ? 'flow-down' : '';
+    parts.push(`<div class="mkt-item">
+      <span class="mkt-label">北向资金</span>
+      <span class="mkt-val ${cls}">${mktData.northBound === 0 ? '休市' : fmtFlow(mktData.northBound * 1e4)}</span>
+    </div>`);
+  }
+
+  if (rawData.length) {
+    const sectorFlow = rawData.reduce((s, d) => s + (Number(d.f62) || 0), 0);
+    const cls = sectorFlow > 0 ? 'flow-up' : sectorFlow < 0 ? 'flow-down' : '';
+    parts.push(`<div class="mkt-item">
+      <span class="mkt-label">板块主力</span>
+      <span class="mkt-val ${cls}">${fmtFlow(sectorFlow)}</span>
+    </div>`);
+  }
+
+  bar.innerHTML = parts.join('');
 }
 
 // ── 新闻板块 ──
@@ -709,6 +766,7 @@ document.getElementById('tab-nav').querySelectorAll('.tab-btn').forEach(btn => {
 
 document.getElementById('refresh-btn').addEventListener('click', () => {
   fetchIndices();
+  fetchMarketData();
   if (activeTab === 'sector') { fetchData(); }
   else { newsLoaded = false; fetchNews(); }
 });
@@ -735,5 +793,6 @@ document.querySelectorAll('.sortable').forEach(th => {
   await loadSettings();
   fetchIndices();
   fetchData();
-  setInterval(() => { fetchIndices(); fetchData(); }, 20000);
+  fetchMarketData();
+  setInterval(() => { fetchIndices(); fetchData(); fetchMarketData(); }, 20000);
 })();

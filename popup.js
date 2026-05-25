@@ -533,7 +533,6 @@ function updateMarketBar() {
   const diffPct = (mktData.prevVol && predicted)
     ? (predicted - mktData.prevVol) / mktData.prevVol * 100
     : null;
-
   const diffHtml = diffPct != null
     ? `<span class="mkt-diff ${diffPct >= 0 ? 'up' : 'down'}">${diffPct > 0 ? '+' : ''}${diffPct.toFixed(1)}%</span>`
     : '';
@@ -541,12 +540,19 @@ function updateMarketBar() {
     ? `<span class="mkt-prev">昨 ${fmtAmount(mktData.prevVol)}</span>`
     : '';
 
-  bar.innerHTML = `<div class="mkt-vol-row">
-    <span class="mkt-label">预测今日成交</span>
-    <span class="mkt-val">${fmtAmount(predicted)}</span>
-    ${diffHtml}
-    ${prevHtml}
-  </div>`;
+  bar.innerHTML = `
+    <div class="mkt-item">
+      <span class="mkt-label">今日成交</span>
+      <span class="mkt-val">${fmtAmount(mktData.vol)}</span>
+    </div>
+    <div class="mkt-item mkt-predict">
+      <span class="mkt-label">预测全天</span>
+      <div class="mkt-predict-row">
+        <span class="mkt-val">${fmtAmount(predicted)}</span>
+        ${diffHtml}
+        ${prevHtml}
+      </div>
+    </div>`;
 }
 
 // ── 新闻板块 ──

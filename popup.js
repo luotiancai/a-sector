@@ -74,7 +74,6 @@ const CUSTOM_SECTORS = {
   BK0428: '电力',
   BK1029: '汽车',
   BK0464: '石油石化',
-  BK1239: '家电',
 };
 
 const SECIDS = Object.keys(CUSTOM_SECTORS).map(k => '90.' + k).join(',');

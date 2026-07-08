@@ -8,26 +8,11 @@
   <div class="header">
     <div class="header-right">
       <span id="update-time" class="update-time">--</span>
-      <button id="settings-btn" class="icon-btn" title="设置 DeepSeek Key">⚙</button>
       <button id="refresh-btn" class="refresh-btn" title="刷新">↻</button>
     </div>
   </div>
 
-  <div id="settings-panel" style="display:none">
-    <div class="settings-row">
-      <span class="settings-label">DeepSeek Key</span>
-      <input id="deepseek-key-input" type="password" class="settings-input" placeholder="sk-..." autocomplete="off">
-      <button id="save-key-btn" class="settings-save">保存</button>
-    </div>
-    <div class="settings-hint">申请：platform.deepseek.com/api-keys</div>
-  </div>
-
   <div id="indices-bar"></div>
-
-  <div id="tab-nav">
-    <button class="tab-btn active" data-tab="sector">板块</button>
-    <button class="tab-btn" data-tab="news">新闻</button>
-  </div>
 
   <div id="tab-sector">
     <div class="col-header">
@@ -37,10 +22,6 @@
       <span class="col-flow sortable" data-col="f62">主力净流入</span>
     </div>
     <div id="list" class="list"><div class="loading">加载中…</div></div>
-  </div>
-
-  <div id="tab-news" style="display:none">
-    <div id="news-list" class="news-list"><div class="loading">加载中…</div></div>
   </div>
 
   <script src="popup.js"></script>

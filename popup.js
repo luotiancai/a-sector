@@ -13,16 +13,19 @@ async function fetchIndices() {
   const bar = document.getElementById('indices-bar');
   try {
     const secids = INDICES.map(i => i.secid).join(',');
-    const res = await fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f3&secids=${secids}&_=${Date.now()}`);
+    const res = await fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f2,f3&secids=${secids}&_=${Date.now()}`);
     const json = await res.json();
     const map = {};
-    (json?.data?.diff || []).forEach(d => { map[d.f12] = Number(d.f3); });
+    (json?.data?.diff || []).forEach(d => { map[d.f12] = { price: Number(d.f2), chg: Number(d.f3) }; });
     bar.innerHTML = INDICES.map(idx => {
       const code = idx.secid.split('.')[1];
-      const chg = map[code];
+      const item = map[code];
+      const chg = item?.chg;
+      const price = item?.price;
       const cls = (chg == null || isNaN(chg)) ? 'flat' : chg > 0 ? 'up' : chg < 0 ? 'down' : 'flat';
-      const txt = (chg == null || isNaN(chg)) ? '—' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
-      return `<div class="idx-item"><span class="idx-name">${idx.name}</span><span class="idx-chg ${cls}">${txt}</span></div>`;
+      const chgTxt = (chg == null || isNaN(chg)) ? '—' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
+      const priceTxt = (price == null || isNaN(price)) ? '' : price.toFixed(2);
+      return `<div class="idx-item"><span class="idx-name">${idx.name}</span><span class="idx-price ${cls}">${priceTxt}</span><span class="idx-chg ${cls}">${chgTxt}</span></div>`;
     }).join('');
   } catch {
     bar.innerHTML = '';
@@ -127,7 +130,6 @@ function renderChartSvg(bk, data, container) {
   const pts = pcts.map((p, i) => `${cx(i).toFixed(1)},${cy(p).toFixed(1)}`);
   const line = `M ${pts.join(' L ')}`;
   const area = `M ${cx(0).toFixed(1)},${cy(0).toFixed(1)} L ${pts.join(' L ')} L ${cx(data.length-1).toFixed(1)},${cy(0).toFixed(1)} Z`;
-  const refY = cy(0).toFixed(1); // 0% 基准线
 
   // 计算合适的网格步长
   const range = hi - lo;
@@ -473,234 +475,12 @@ function render() {
     const svgWrap = panel.querySelector('.chart-svg-wrap');
     const chgEl = panel.querySelector('.chart-period-chg');
     const cached = chartCache[`${bk}_${rangeLabel}`];
-    if (cached) { updateChgEl(chgEl, cached, range.type === 'intraday'); renderChartSvg(bk, cached, svgWrap); }
+    if (cached) { updateChgEl(chgEl, cached); renderChartSvg(bk, cached, svgWrap); }
     else loadChart(bk, range, svgWrap, chgEl);
   });
 }
 
-// ── 新闻板块 ──
-
-const NEWS_SECTOR_MAP = {
-  '黄金':   ['黄金', '金价', '贵金属'],
-  '稀土永磁': ['稀土', '永磁', '稀土永磁'],
-  '半导体':  ['芯片', '半导体', '集成电路', '晶圆', 'EDA', '光刻', 'GPU'],
-  'AI应用':  ['AI', '人工智能', '大模型', '算力', 'GPT', '智算中心'],
-  '机器人':  ['机器人', '人形机器人', '具身智能'],
-  '光伏':   ['光伏', '太阳能', '组件', '逆变器', '硅料'],
-  '电池':   ['电池', '锂电池', '动力电池', '碳酸锂', '储能'],
-  '汽车':   ['电动车', '新能源车', '充电桩', '整车', '比亚迪', '特斯拉'],
-  '创新药':  ['新药', '创新药', 'FDA', '临床试验', 'BLA', 'NDA'],
-  '医药':   ['医药', '医保', '集采', '仿制药'],
-  '军工':   ['军工', '国防', '军事', '导弹', '战机', '军费'],
-  '银行':   ['银行', '存款', '降准', '存款准备金', '信贷'],
-  '房地产':  ['房地产', '楼市', '房价', '商品房', '房企'],
-  '白酒':   ['白酒', '茅台', '五粮液', '汾酒', '洋河'],
-  '石油石化': ['石油', '原油', '天然气', '油价', 'OPEC'],
-  '商业航天': ['航天', '火箭', '卫星', '星链'],
-  '电力':   ['电力', '核电', '发电', '电网'],
-  '煤炭':   ['煤炭', '煤价', '动力煤', '焦煤'],
-  '工业金属': ['铜价', '铝价', '铜矿', '有色金属', '工业金属'],
-  '锂矿':   ['锂矿', '碳酸锂价', '氢氧化锂'],
-};
-
-const BULLISH_WORDS = ['利好', '超预期', '创新高', '大幅增长', '获批', '降准', '降息', '减税', '补贴', '政策支持', '扩产', '强劲', '扭亏', '首次盈利', '大幅上涨', '重大突破', '战略合作', '好于预期', '新突破'];
-const BEARISH_WORDS = ['利空', '不及预期', '业绩下滑', '大幅亏损', '净利润下降', '违规', '处罚', '立案', '被查', '债务危机', '破产', '退市', '大幅下跌', '暴跌', '萎缩', '下滑加剧', '亏损扩大'];
-
-function newsAnalyze(text) {
-  let b = 0, r = 0;
-  BULLISH_WORDS.forEach(k => { if (text.includes(k)) b++; });
-  BEARISH_WORDS.forEach(k => { if (text.includes(k)) r++; });
-  if (b > r) return 'bullish';
-  if (r > b) return 'bearish';
-  return 'neutral';
-}
-
-function newsMatchSectors(text) {
-  const res = [];
-  for (const [name, kw] of Object.entries(NEWS_SECTOR_MAP)) {
-    if (kw.some(k => text.includes(k))) res.push(name);
-  }
-  return res.slice(0, 3);
-}
-
-let newsData = [];
-let newsLoaded = false;
-let deepseekKey = '';
-
-// ── Settings ──
-async function loadSettings() {
-  const res = await chrome.storage.local.get('deepseekKey');
-  deepseekKey = res.deepseekKey || '';
-  if (deepseekKey) document.getElementById('deepseek-key-input').value = '••••••••';
-}
-
-document.getElementById('settings-btn').addEventListener('click', () => {
-  const panel = document.getElementById('settings-panel');
-  const btn = document.getElementById('settings-btn');
-  const visible = panel.style.display !== 'none';
-  panel.style.display = visible ? 'none' : '';
-  btn.classList.toggle('active', !visible);
-});
-
-document.getElementById('save-key-btn').addEventListener('click', async () => {
-  const val = document.getElementById('deepseek-key-input').value.trim();
-  if (!val || val === '••••••••') return;
-  await chrome.storage.local.set({ deepseekKey: val });
-  deepseekKey = val;
-  document.getElementById('deepseek-key-input').value = '••••••••';
-  document.getElementById('settings-panel').style.display = 'none';
-  document.getElementById('settings-btn').classList.remove('active');
-  if (activeTab === 'news' && newsData.length) {
-    document.getElementById('news-list').innerHTML = '<div class="loading">AI 分析中…</div>';
-    const analysisMap = await analyzeNews();
-    renderNews(analysisMap);
-  }
-});
-
-// ── DeepSeek 分析 ──
-function analyzeNews() {
-  if (!deepseekKey || !newsData.length) return Promise.resolve(null);
-  const sectors = Object.keys(NEWS_SECTOR_MAP).join('、');
-  const items = newsData.map((item, i) => `${i}. ${item.content}`).join('\n');
-  const prompt = `你是一名A股实盘交易员，正在盯盘。以下是一批实时新闻，逐条判断：看到这条消息，你会操作吗？
-
-对每条新闻问自己：这条消息会让我现在加仓还是减仓某个板块？
-- 会加仓 → bullish，填写对应板块
-- 会减仓 → bearish，填写对应板块
-- 不会动 → 两种情况：
-  (a) 这消息根本不影响股市（企业促销、日常公告、境外无关事件）→ skip=true
-  (b) 有影响但方向不明 → neutral
-
-可选板块：${sectors}
-
-严格只返回JSON数组，不要任何其他文字：
-[{"i":0,"skip":false,"s":"bullish","tags":["电池","锂矿"],"r":"碳酸锂涨价利好上游"},...]
-s填 bullish/bearish/neutral，skip=true时其余字段填空字符串
-
-新闻：
-${items}`;
-
-  return new Promise(resolve => {
-    chrome.runtime.sendMessage({ type: 'DEEPSEEK', key: deepseekKey, prompt }, resp => {
-      if (chrome.runtime.lastError || !resp?.ok) { resolve(null); return; }
-      try {
-        const raw = resp.text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        const arr = JSON.parse(raw);
-        const map = {};
-        arr.forEach(r => { map[r.i] = r; });
-        resolve(map);
-      } catch { resolve(null); }
-    });
-  });
-}
-
-function bgFetch(url) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ type: 'FETCH', url }, resp => {
-      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-      resp?.ok ? resolve(resp.text) : reject(new Error(resp?.error || 'fetch failed'));
-    });
-  });
-}
-
-async function fetchNews() {
-  const el = document.getElementById('news-list');
-  el.innerHTML = '<div class="loading">加载中…</div>';
-  try {
-    const url = `https://zhibo.sina.com.cn/api/zhibo/feed?zhibo_id=152&page=1&page_size=30&type=0&id=0&_=${Date.now()}`;
-    const raw = await bgFetch(url);
-    const json = JSON.parse(raw);
-    newsData = (json?.result?.data?.feed?.list || []).map(item => ({
-      content: (item.rich_text || '').replace(/<[^>]+>/g, '').trim(),
-      showtime: (item.create_time || '').slice(11, 16),
-      important: item.top_value > 0,
-    }));
-    newsLoaded = true;
-    if (deepseekKey) {
-      document.getElementById('news-list').innerHTML = '<div class="loading">AI 分析中…</div>';
-      const analysisMap = await analyzeNews();
-      renderNews(analysisMap);
-    } else {
-      renderNews(null);
-    }
-  } catch {
-    el.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
-  }
-}
-
-function renderNews(analysisMap) {
-  const el = document.getElementById('news-list');
-  if (!newsData.length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
-
-  const visibleNews = (analysisMap
-    ? newsData.filter((_, i) => !analysisMap[i]?.skip)
-    : newsData
-  ).filter((item, i) => {
-    const origIdx = analysisMap ? newsData.indexOf(item) : i;
-    const ai = analysisMap?.[origIdx];
-    const sentiment = ai ? ai.s : newsAnalyze(item.content || '');
-    const sectors = ai ? (ai.tags || []) : newsMatchSectors(item.content || '');
-    return !(sentiment === 'neutral' && sectors.length === 0);
-  });
-
-  const items = visibleNews.map((item, i) => {
-    const origIdx = analysisMap ? newsData.indexOf(item) : i;
-    const text = item.content || '';
-    const ai = analysisMap?.[origIdx];
-    const sentiment = ai ? ai.s : newsAnalyze(text);
-    const sectors = ai ? (ai.tags || []) : newsMatchSectors(text);
-    const reason = ai?.r || '';
-    const time = item.showtime || '';
-    const isImportant = item.important;
-    const sentLabel = sentiment === 'bullish' ? '利好' : sentiment === 'bearish' ? '利空' : '中性';
-    const sectorTags = sectors.map(s => `<span class="news-sector-tag">${s}</span>`).join('');
-    const reasonTag = reason ? `<span class="news-reason">${reason}</span>` : '';
-    return `<div class="news-item${isImportant ? ' important' : ''}">
-      <div class="news-meta">
-        <span class="news-time">${time}</span>
-        <span class="news-badge ${sentiment}">${sentLabel}</span>
-        ${sectorTags}${reasonTag}
-      </div>
-      <div class="news-text">${text}</div>
-      <button class="news-expand-btn">展开</button>
-    </div>`;
-  }).join('');
-
-  el.innerHTML = items;
-
-  el.querySelectorAll('.news-expand-btn').forEach(btn => {
-    const item = btn.closest('.news-item');
-    const textEl = item.querySelector('.news-text');
-    if (textEl.scrollHeight <= textEl.clientHeight) {
-      btn.style.display = 'none';
-    }
-    btn.addEventListener('click', () => {
-      const expanded = item.classList.toggle('expanded');
-      btn.textContent = expanded ? '收起' : '展开';
-    });
-  });
-}
-
-// ── Tab 切换 ──
-let activeTab = 'sector';
-
-document.getElementById('tab-nav').querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const tab = btn.dataset.tab;
-    if (tab === activeTab) return;
-    activeTab = tab;
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-    document.getElementById('tab-sector').style.display = tab === 'sector' ? '' : 'none';
-    document.getElementById('tab-news').style.display = tab === 'news' ? '' : 'none';
-    if (tab === 'news' && !newsLoaded) fetchNews();
-  });
-});
-
-document.getElementById('refresh-btn').addEventListener('click', () => {
-  fetchIndices();
-  if (activeTab === 'sector') { fetchData(); }
-  else { newsLoaded = false; fetchNews(); }
-});
+document.getElementById('refresh-btn').addEventListener('click', () => { fetchIndices(); fetchData(); });
 
 
 document.querySelectorAll('.sortable').forEach(th => {
@@ -720,9 +500,6 @@ document.querySelectorAll('.sortable').forEach(th => {
   });
 });
 
-(async () => {
-  await loadSettings();
-  fetchIndices();
-  fetchData();
-  setInterval(() => { fetchIndices(); fetchData(); }, 20000);
-})();
+fetchIndices();
+fetchData();
+setInterval(() => { fetchIndices(); fetchData(); }, 20000);

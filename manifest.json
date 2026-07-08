@@ -7,18 +7,12 @@
     "default_popup": "popup.html",
     "default_title": "A股行业板块"
   },
-  "background": {
-    "service_worker": "background.js"
-  },
-  "permissions": ["storage"],
   "host_permissions": [
     "https://push2.eastmoney.com/*",
     "https://push2his.eastmoney.com/*",
     "https://fundsuggest.eastmoney.com/*",
     "https://fundmobapi.eastmoney.com/*",
     "https://fund.eastmoney.com/*",
-    "https://*.eastmoney.com/*",
-    "https://zhibo.sina.com.cn/*",
-    "https://api.deepseek.com/*"
+    "https://*.eastmoney.com/*"
   ]
 }

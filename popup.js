@@ -303,7 +303,7 @@ function fmtFlow(val) {
 
 async function fetchStocks(bk) {
   if (stockCache[bk]) return stockCache[bk];
-  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=b:${bk}+f:!50&fields=f2,f3,f12,f13,f14&_=${Date.now()}`;
+  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f20&fs=b:${bk}+f:!50&fields=f2,f3,f12,f13,f14,f20&_=${Date.now()}`;
   const res = await fetch(url);
   const json = await res.json();
   const stocks = json?.data?.diff || [];

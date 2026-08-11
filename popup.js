@@ -1,3 +1,52 @@
+// ── 请求工具：东财接口会限流，失败要重试，并发也要压住 ──
+const CONCURRENCY = 4;
+
+// push2 会整段拒连（直接空响应，不是 4xx/5xx），此时换 push2delay 顶上。
+// push2delay 对 A 股其实是实时的：返回体里 dlmkts 只标了 8/10/128 这些
+// 境外市场，沪深（0/1）不在延时名单内，两边报价实测一致。
+const HOST_FALLBACK = { 'push2.eastmoney.com': 'push2delay.eastmoney.com' };
+// 某个主机挂掉后记下替补，后续请求直接走替补，不再逐个去撞墙
+const hostSwap = {};
+
+function hostCandidates(url) {
+  const host = new URL(url).host;
+  const alt = HOST_FALLBACK[host];
+  if (!alt) return [url];
+  const swapped = url.replace(host, alt);
+  return hostSwap[host] ? [swapped, url] : [url, swapped];
+}
+
+async function fetchJson(url, tries = 2) {
+  const urls = hostCandidates(url);
+  let lastErr;
+  for (const u of urls) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        const res = await fetch(u);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        if (u !== url) hostSwap[new URL(url).host] = true;
+        return json;
+      } catch (e) {
+        lastErr = e;
+        if (i < tries - 1) await new Promise(r => setTimeout(r, 250 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function runPool(items, limit, worker) {
+  let cursor = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await worker(item);
+    }
+  });
+  await Promise.all(lanes);
+}
+
 // ── 全球指数 ──
 const INDICES = [
   { secid: '1.000001',   name: '上证' },
@@ -13,8 +62,7 @@ async function fetchIndices() {
   const bar = document.getElementById('indices-bar');
   try {
     const secids = INDICES.map(i => i.secid).join(',');
-    const res = await fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f2,f3&secids=${secids}&_=${Date.now()}`);
-    const json = await res.json();
+    const json = await fetchJson(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f2,f3&secids=${secids}&_=${Date.now()}`);
     const map = {};
     (json?.data?.diff || []).forEach(d => { map[d.f12] = { price: Number(d.f2), chg: Number(d.f3) }; });
     bar.innerHTML = INDICES.map(idx => {
@@ -85,6 +133,29 @@ let rawData = [];
 const stockCache = {};
 const expandedSet = new Set();
 
+// 板块涨幅按前 10 大市值成分股加权后的结果，bk -> pct | null
+const weightedChgMap = {};
+
+// 东财板块自带的 f3 是成分股等权算术平均，小市值蹭概念股和龙头同权，
+// 会出现龙头大跌但板块显示上涨。这里改用前 10 大市值成分股做市值加权，
+// 口径与基估宝等指数类应用一致（CPO 实测：等权 +2.13%，前10加权 -1.03%）。
+function calcWeightedChg(stocks) {
+  let num = 0, den = 0;
+  (stocks || []).forEach(s => {
+    const chg = Number(s.f3), mv = Number(s.f20);
+    if (!isFinite(chg) || !isFinite(mv) || mv <= 0) return;
+    num += chg * mv;
+    den += mv;
+  });
+  return den > 0 ? num / den : null;
+}
+
+// 排序取加权值，加权值缺失时回落到东财原始等权值
+function chgOf(d) {
+  const w = weightedChgMap[d.f12];
+  return w == null ? Number(d.f3) : w;
+}
+
 // ── 走势图 ──
 const CHART_RANGES = [
   { label: '1月',  type: 'hist', days: 35 },
@@ -106,8 +177,7 @@ async function fetchKline(bk, range) {
   const key = `${bk}_${range.label}`;
   if (chartCache[key]) return chartCache[key];
   const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=90.${bk}&fields1=f1&fields2=f51,f53&klt=101&fqt=1&beg=${begDate(range.days)}&end=20500101`;
-  const res = await fetch(url);
-  const json = await res.json();
+  const json = await fetchJson(url);
   const data = (json?.data?.klines || []).map(k => {
     const [date, close] = k.split(',');
     return { date, close: parseFloat(close) };
@@ -301,11 +371,10 @@ function fmtFlow(val) {
   return sign + abs.toFixed(0);
 }
 
-async function fetchStocks(bk) {
-  if (stockCache[bk]) return stockCache[bk];
+async function fetchStocks(bk, force = false) {
+  if (!force && stockCache[bk]) return stockCache[bk];
   const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f20&fs=b:${bk}+f:!50&fields=f2,f3,f12,f13,f14,f20&_=${Date.now()}`;
-  const res = await fetch(url);
-  const json = await res.json();
+  const json = await fetchJson(url);
   const stocks = json?.data?.diff || [];
   stockCache[bk] = stocks;
   return stocks;
@@ -377,26 +446,75 @@ async function toggleStocks(bk, btn) {
   }
 }
 
+function setStatus(text) {
+  document.getElementById('update-time').textContent = text;
+}
+
+function stampTime() {
+  setStatus(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+}
+
+// 加权值到齐一个就地更新一行，避免整表重排导致行乱跳；全部到齐后再统一排序
+function paintRowChg(bk) {
+  const wrap = document.querySelector(`.row-wrap[data-bk="${bk}"]`);
+  if (!wrap) return;
+  const cell = wrap.querySelector('.col-chg');
+  const pct = weightedChgMap[bk];
+  const cls = (pct == null || isNaN(pct)) ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+  const txt = (pct == null || isNaN(pct)) ? '—' : (pct > 0 ? '+' : '') + fmt(pct) + '%';
+  cell.className = `col-chg ${cls}`;
+  cell.innerHTML = `<span class="chg-text">${txt}</span>`;
+}
+
+async function fetchWeighted(bks) {
+  let done = 0, failed = 0;
+  await runPool(bks, CONCURRENCY, async bk => {
+    try {
+      weightedChgMap[bk] = calcWeightedChg(await fetchStocks(bk, true));
+      if (expandedSet.has(bk)) renderStockPanel(bk, stockCache[bk]);
+    } catch {
+      weightedChgMap[bk] = null;
+      failed++;
+    }
+    paintRowChg(bk);
+    setStatus(`加权中 ${++done}/${bks.length}`);
+  });
+  return failed;
+}
+
+let refreshing = false;
+
 async function fetchData() {
+  if (refreshing) return;
+  refreshing = true;
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
   const list = document.getElementById('list');
   if (!rawData.length) list.innerHTML = '<div class="loading">加载中…</div>';
   try {
-    const res = await fetch(API_URL + '&_=' + Date.now());
-    const json = await res.json();
+    const json = await fetchJson(API_URL + '&_=' + Date.now());
     const all = json?.data?.diff || [];
     rawData = all.map(d => ({ ...d, f14: CUSTOM_SECTORS[d.f12] || d.f14 }));
+    // 板块列表先出来，加权值随后逐个回填
+    rawData.forEach(d => { delete weightedChgMap[d.f12]; });
     render();
-    document.getElementById('update-time').textContent =
-      new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const failed = await fetchWeighted(rawData.map(d => d.f12));
+    render();
+    stampTime();
+    if (failed) setStatus(document.getElementById('update-time').textContent + ` (${failed}个失败)`);
   } catch (e) {
-    list.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
+    if (!rawData.length) list.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
+    setStatus('加载失败');
+  } finally {
+    refreshing = false;
+    btn.disabled = false;
   }
 }
 
 function render() {
   const data = [...rawData].sort((a, b) => {
-    const va = Number(a[sortCol]) || 0;
-    const vb = Number(b[sortCol]) || 0;
+    const va = (sortCol === 'f3' ? chgOf(a) : Number(a[sortCol])) || 0;
+    const vb = (sortCol === 'f3' ? chgOf(b) : Number(b[sortCol])) || 0;
     return sortDir === 'desc' ? vb - va : va - vb;
   });
 
@@ -414,17 +532,21 @@ function render() {
 
   data.forEach((d, i) => {
     const bk = d.f12;
-    const chg = Number(d.f3);
+    const pending = !(bk in weightedChgMap);
+    const chg = weightedChgMap[bk];
     const isUp = chg > 0;
-    const isFlat = chg === 0 || isNaN(chg);
+    const isFlat = chg === 0 || chg == null || isNaN(chg);
     const cls = isFlat ? 'flat' : isUp ? 'up' : 'down';
-    const chgText = isNaN(chg) ? '—' : (isUp ? '+' : '') + fmt(chg) + '%';
+    const chgText = pending ? '…'
+      : (chg == null || isNaN(chg)) ? '—'
+      : (isUp ? '+' : '') + fmt(chg) + '%';
     const flow = Number(d.f62);
     const flowCls = isNaN(flow) ? '' : flow > 0 ? 'flow-up' : 'flow-down';
     const isExpanded = expandedSet.has(bk);
 
     const wrap = document.createElement('div');
     wrap.className = 'row-wrap';
+    wrap.dataset.bk = bk;
     wrap.innerHTML = `
       <div class="row">
         <span class="col-rank">${i + 1}</span>
@@ -510,4 +632,3 @@ document.querySelectorAll('.sortable').forEach(th => {
 
 fetchIndices();
 fetchData();
-setInterval(() => { fetchIndices(); fetchData(); }, 20000);

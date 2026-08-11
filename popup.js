@@ -47,11 +47,59 @@ async function runPool(items, limit, worker) {
   await Promise.all(lanes);
 }
 
+// ── 交易时段 ──
+// 北京时间固定 UTC+8，不涉及夏令时，直接加偏移用 UTC getter 取字段。
+// 收盘沿后延 5 分钟：主力净流入这类数据 15:00 之后还会再落一次。
+const BJ_OFFSET = 8 * 3600 * 1000;
+const AM_OPEN = 9 * 60 + 15;   // 含集合竞价
+const AM_CLOSE = 11 * 60 + 30;
+const PM_OPEN = 13 * 60;
+const PM_CLOSE = 15 * 60 + 5;
+
+function bjParts(ts) {
+  const d = new Date(ts + BJ_OFFSET);
+  return {
+    day: d.getUTCDay(),
+    min: d.getUTCHours() * 60 + d.getUTCMinutes(),
+    // 该北京日零点对应的真实时间戳
+    dayStart: Math.floor((ts + BJ_OFFSET) / 86400000) * 86400000 - BJ_OFFSET,
+  };
+}
+
+function isTradingNow(now = Date.now()) {
+  const { day, min } = bjParts(now);
+  if (day === 0 || day === 6) return false;
+  return (min >= AM_OPEN && min < AM_CLOSE) || (min >= PM_OPEN && min < PM_CLOSE);
+}
+
+// 最近一次「行情停止变化」的时刻：上一段交易的收盘点。
+// 中午休市返回当天 11:30，盘后返回当天 15:05，周末/节前返回上一个交易日收盘。
+function lastSessionEnd(now = Date.now()) {
+  let { day, min, dayStart } = bjParts(now);
+  for (let back = 0; back < 8; back++) {
+    if (day !== 0 && day !== 6) {
+      for (const end of [PM_CLOSE, AM_CLOSE]) {
+        if (end <= min) return dayStart + end * 60000;
+      }
+    }
+    dayStart -= 86400000;
+    day = (day + 6) % 7;
+    min = 24 * 60;  // 往前翻一天，取当天最晚
+  }
+  return 0;
+}
+
 // ── 本地缓存 ──
 // popup 一关 JS 状态就没了，每次打开都要重新打 40+ 个东财请求。
-// 1 分钟内重开直接用上次结果；点刷新按钮永远强制拉新。
+// 交易时段内 1 分钟；非交易时段行情压根不动，缓存只要取自上一次收盘
+// 之后就一直算新鲜，不用再拉。点刷新按钮永远强制拉新。
 const CACHE_KEY = 'a-sector-cache-v1';
 const CACHE_TTL = 60 * 1000;
+
+function cacheFresh(ts, now = Date.now()) {
+  if (now - ts <= CACHE_TTL) return true;
+  return !isTradingNow(now) && ts >= lastSessionEnd(now);
+}
 
 let lastFetchTs = 0;
 
@@ -68,7 +116,7 @@ function saveCache() {
 function loadCache() {
   try {
     const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-    if (!c || !c.rawData?.length || Date.now() - c.ts > CACHE_TTL) return null;
+    if (!c || !c.rawData?.length || !cacheFresh(c.ts)) return null;
     // 板块清单改过就别用旧缓存了，免得列表跟代码对不上
     const want = Object.keys(CUSTOM_SECTORS).sort().join(',');
     if (c.rawData.map(d => d.f12).sort().join(',') !== want) return null;
@@ -675,7 +723,7 @@ function refreshAll() {
   fetchData();
 }
 
-// 1 分钟内重开直接吃缓存，不发请求；过期或没缓存才拉数据
+// 缓存新鲜就直接渲染，不打那 40+ 个板块请求；过期或没缓存才拉数据
 const cached = loadCache();
 if (cached) {
   indicesMap = cached.indices || {};
@@ -685,7 +733,9 @@ if (cached) {
   Object.assign(stockCache, cached.stocks || {});
   renderIndices();
   render();
-  setStatus(fmtClock(cached.ts) + ' (缓存)');
+  setStatus(fmtClock(cached.ts) + (isTradingNow() ? ' (缓存)' : ' (休市)'));
+  // A 股不动了，但纳指日经这些还在走，指数条单独刷一下（就 1 个请求）
+  if (!isTradingNow() && Date.now() - cached.ts > CACHE_TTL) fetchIndices();
 } else {
   refreshAll();
 }

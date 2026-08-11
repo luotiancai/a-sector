@@ -47,6 +47,37 @@ async function runPool(items, limit, worker) {
   await Promise.all(lanes);
 }
 
+// ── 本地缓存 ──
+// popup 一关 JS 状态就没了，每次打开都要重新打 40+ 个东财请求。
+// 1 分钟内重开直接用上次结果；点刷新按钮永远强制拉新。
+const CACHE_KEY = 'a-sector-cache-v1';
+const CACHE_TTL = 60 * 1000;
+
+let lastFetchTs = 0;
+
+function saveCache() {
+  if (!lastFetchTs || !rawData.length) return;  // 板块数据没到手就不写，免得缓存到空列表
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      ts: lastFetchTs, rawData, indices: indicesMap,
+      weighted: weightedChgMap, stocks: stockCache,
+    }));
+  } catch {}
+}
+
+function loadCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (!c || !c.rawData?.length || Date.now() - c.ts > CACHE_TTL) return null;
+    // 板块清单改过就别用旧缓存了，免得列表跟代码对不上
+    const want = Object.keys(CUSTOM_SECTORS).sort().join(',');
+    if (c.rawData.map(d => d.f12).sort().join(',') !== want) return null;
+    return c;
+  } catch {
+    return null;
+  }
+}
+
 // ── 全球指数 ──
 const INDICES = [
   { secid: '1.000001',   name: '上证' },
@@ -58,25 +89,33 @@ const INDICES = [
   { secid: '100.KS11',   name: '韩国' },
 ];
 
-async function fetchIndices() {
+let indicesMap = {};
+
+function renderIndices() {
   const bar = document.getElementById('indices-bar');
+  bar.innerHTML = INDICES.map(idx => {
+    const code = idx.secid.split('.')[1];
+    const item = indicesMap[code];
+    const chg = item?.chg;
+    const price = item?.price;
+    const cls = (chg == null || isNaN(chg)) ? 'flat' : chg > 0 ? 'up' : chg < 0 ? 'down' : 'flat';
+    const chgTxt = (chg == null || isNaN(chg)) ? '—' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
+    const priceTxt = (price == null || isNaN(price)) ? '' : price.toFixed(2);
+    return `<div class="idx-item"><span class="idx-name">${idx.name}</span><span class="idx-price ${cls}">${priceTxt}</span><span class="idx-chg ${cls}">${chgTxt}</span></div>`;
+  }).join('');
+}
+
+async function fetchIndices() {
   try {
     const secids = INDICES.map(i => i.secid).join(',');
     const json = await fetchJson(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f2,f3&secids=${secids}&_=${Date.now()}`);
     const map = {};
     (json?.data?.diff || []).forEach(d => { map[d.f12] = { price: Number(d.f2), chg: Number(d.f3) }; });
-    bar.innerHTML = INDICES.map(idx => {
-      const code = idx.secid.split('.')[1];
-      const item = map[code];
-      const chg = item?.chg;
-      const price = item?.price;
-      const cls = (chg == null || isNaN(chg)) ? 'flat' : chg > 0 ? 'up' : chg < 0 ? 'down' : 'flat';
-      const chgTxt = (chg == null || isNaN(chg)) ? '—' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
-      const priceTxt = (price == null || isNaN(price)) ? '' : price.toFixed(2);
-      return `<div class="idx-item"><span class="idx-name">${idx.name}</span><span class="idx-price ${cls}">${priceTxt}</span><span class="idx-chg ${cls}">${chgTxt}</span></div>`;
-    }).join('');
+    indicesMap = map;
+    renderIndices();
+    saveCache();
   } catch {
-    bar.innerHTML = '';
+    document.getElementById('indices-bar').innerHTML = '';
   }
 }
 
@@ -450,8 +489,8 @@ function setStatus(text) {
   document.getElementById('update-time').textContent = text;
 }
 
-function stampTime() {
-  setStatus(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+function fmtClock(ts) {
+  return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 // 加权值到齐一个就地更新一行，避免整表重排导致行乱跳；全部到齐后再统一排序
@@ -500,8 +539,9 @@ async function fetchData() {
     render();
     const failed = await fetchWeighted(rawData.map(d => d.f12));
     render();
-    stampTime();
-    if (failed) setStatus(document.getElementById('update-time').textContent + ` (${failed}个失败)`);
+    lastFetchTs = Date.now();
+    setStatus(fmtClock(lastFetchTs) + (failed ? ` (${failed}个失败)` : ''));
+    saveCache();
   } catch (e) {
     if (!rawData.length) list.innerHTML = '<div class="loading error">加载失败，请检查网络</div>';
     setStatus('加载失败');
@@ -610,7 +650,7 @@ function render() {
   });
 }
 
-document.getElementById('refresh-btn').addEventListener('click', () => { fetchIndices(); fetchData(); });
+document.getElementById('refresh-btn').addEventListener('click', () => { refreshAll(); });
 
 
 document.querySelectorAll('.sortable').forEach(th => {
@@ -630,5 +670,22 @@ document.querySelectorAll('.sortable').forEach(th => {
   });
 });
 
-fetchIndices();
-fetchData();
+function refreshAll() {
+  fetchIndices();
+  fetchData();
+}
+
+// 1 分钟内重开直接吃缓存，不发请求；过期或没缓存才拉数据
+const cached = loadCache();
+if (cached) {
+  indicesMap = cached.indices || {};
+  rawData = cached.rawData;
+  lastFetchTs = cached.ts;
+  Object.assign(weightedChgMap, cached.weighted || {});
+  Object.assign(stockCache, cached.stocks || {});
+  renderIndices();
+  render();
+  setStatus(fmtClock(cached.ts) + ' (缓存)');
+} else {
+  refreshAll();
+}

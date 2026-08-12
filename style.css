@@ -93,6 +93,8 @@ body {
   color: #777;
   border-bottom: 1px solid #1a1e2a;
   background: #0d1018;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .col-header .col-name { flex: 1; }
 .col-header .col-chg { width: 72px; text-align: right; }

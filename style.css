@@ -1,5 +1,10 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  background: #0f1117;
+  overflow: hidden;
+}
+
 body {
   width: 520px;
   font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -7,6 +12,7 @@ body {
   background: #0f1117;
   color: #e8e8e8;
   user-select: none;
+  overflow: hidden;
 }
 
 /* ── Header ── */
@@ -103,10 +109,12 @@ body {
 
 /* ── List ── */
 .list {
-  max-height: 480px;
+  /* header(41) + indices(71) + colHeader(31) = 143; popup 上限 600px */
+  max-height: calc(600px - 143px);
   overflow-y: auto;
 }
-.list::-webkit-scrollbar { width: 4px; }
+.list::-webkit-scrollbar { width: 4px; background: transparent; }
+.list::-webkit-scrollbar-track { background: transparent; }
 .list::-webkit-scrollbar-thumb { background: #2a2f40; border-radius: 2px; }
 
 .loading {
@@ -272,7 +280,8 @@ body {
   max-height: 280px;
   overflow-y: auto;
 }
-.stock-panel::-webkit-scrollbar { width: 3px; }
+.stock-panel::-webkit-scrollbar { width: 3px; background: transparent; }
+.stock-panel::-webkit-scrollbar-track { background: transparent; }
 .stock-panel::-webkit-scrollbar-thumb { background: #2a2f40; border-radius: 2px; }
 
 .stock-row {
